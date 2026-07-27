@@ -1,0 +1,23 @@
+# Example: Harbor-only app (build + push to Harbor, no GitLab registry)
+
+include:
+  - project: homelab/pipeline-templates
+    ref: main
+    file:
+      - templates/container/harbor-build-push.yml
+      - templates/container/trivy-image-scan.yml
+
+stages:
+  - build
+  - scan
+
+variables:
+  HARBOR_PROJECT: "apps"
+  TRIVY_SEVERITY: "CRITICAL,HIGH"
+  TRIVY_USERNAME: "${HARBOR_USERNAME}"
+  TRIVY_PASSWORD: "${HARBOR_PASSWORD}"
+
+container:trivy-image-scan:
+  extends: .container_trivy_image_scan
+  needs:
+    - job: container:harbor-build-push

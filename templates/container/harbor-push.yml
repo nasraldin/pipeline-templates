@@ -1,4 +1,5 @@
 .container_harbor_push:
+  # Retag/push an image already in GitLab Container Registry — does not build.
   stage: publish
   image: docker:27
   services:
@@ -20,7 +21,7 @@
     - job: container:build
     - job: container:trivy-image-scan
       optional: true
-    - job: container:gitlab-scan
+    - job: container:container-scan
       optional: true
   rules:
     - if: $HARBOR_PASSWORD && $CI_REGISTRY_IMAGE

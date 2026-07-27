@@ -28,7 +28,7 @@ include:
       - templates/lint/yaml.yml
       - templates/container/build.yml
       - templates/container/trivy-image-scan.yml
-      - templates/container/gitlab-container-scanning.yml
+      - templates/container/container-scan.yml
       - templates/container/harbor-push.yml
 
 stages:
@@ -38,8 +38,21 @@ stages:
   - publish
 ```
 
-Set `HARBOR_PROJECT`, `HARBOR_USERNAME`, and `HARBOR_PASSWORD` for Harbor push.
+Set `HARBOR_PROJECT`, `HARBOR_USERNAME`, and `HARBOR_PASSWORD` for Harbor jobs.
 See [container-scanning.md](container-scanning.md).
+
+Harbor-only apps (no GitLab registry):
+
+```yaml
+include:
+  - project: homelab/pipeline-templates
+    ref: main
+    file:
+      - templates/container/harbor-build-push.yml
+      - templates/container/trivy-image-scan.yml
+```
+
+See [examples/harbor-only-pipeline.gitlab-ci.yml](../examples/harbor-only-pipeline.gitlab-ci.yml).
 
 ### Quality gate only (no image)
 

@@ -10,7 +10,7 @@ include:
       - templates/lint/yaml.yml
       - templates/container/build.yml
       - templates/container/trivy-image-scan.yml
-      - templates/container/gitlab-container-scanning.yml
+      - templates/container/container-scan.yml
       - templates/container/harbor-push.yml
 
 stages:
@@ -23,9 +23,5 @@ variables:
   TRIVY_SEVERITY: "CRITICAL,HIGH"
   HARBOR_PROJECT: "apps"
 
-# Optional: override scan jobs (anchors are in included templates)
-# container:trivy-image-scan:
-#   extends: .container_trivy_image_scan
-#
-# container:gitlab-scan:
-#   extends: .container_gitlab_scan
+# Harbor-only apps: swap build.yml for harbor-build-push.yml and override
+# container:trivy-image-scan needs to container:harbor-build-push.

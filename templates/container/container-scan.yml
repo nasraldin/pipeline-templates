@@ -1,7 +1,7 @@
 include:
   - template: Jobs/Container-Scanning.gitlab-ci.yml
 
-.container_gitlab_scan:
+.container_scan:
   extends: container_scanning
   stage: scan
   variables:
@@ -12,8 +12,8 @@ include:
       exists:
         - Dockerfile
 
-container:gitlab-scan:
-  extends: .container_gitlab_scan
+container:container-scan:
+  extends: .container_scan
   needs:
     - job: container:build
       optional: false

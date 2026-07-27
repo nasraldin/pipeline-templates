@@ -27,10 +27,11 @@ include:
 
 | Template | Job | When to include |
 | -------- | --- | --------------- |
-| `templates/container/build.yml` | `container:build` | App repos with `Dockerfile` |
+| `templates/container/build.yml` | `container:build` | Build + push to GitLab registry |
+| `templates/container/harbor-build-push.yml` | `container:harbor-build-push` | Build + push directly to Harbor |
 | `templates/container/trivy-image-scan.yml` | `container:trivy-image-scan` | CVE gate after build |
-| `templates/container/gitlab-container-scanning.yml` | `container:gitlab-scan` | GitLab Security report |
-| `templates/container/harbor-push.yml` | `container:harbor-push` | Manual Harbor publish |
+| `templates/container/container-scan.yml` | `container:container-scan` | GitLab Security report |
+| `templates/container/harbor-push.yml` | `container:harbor-push` | Retag GitLab image → Harbor (no build) |
 | `templates/security/trivy-filesystem.yml` | `security:trivy-fs-scan` | Infra/GitOps (no image) |
 
 See [docs/container-scanning.md](docs/container-scanning.md).
