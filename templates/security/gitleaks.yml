@@ -1,0 +1,36 @@
+# Secret scanning with Gitleaks (detect hardcoded credentials in git history / tree).
+# Include from consumer repos; override rules as needed.
+#
+# Optional CI variables:
+#   GITLEAKS_CONFIG   — path to .gitleaks.toml (default: none / built-in)
+#   GITLEAKS_EXIT_CODE — default 1 (fail on findings); set 0 for report-only
+
+.security_gitleaks:
+  stage: validate
+  image:
+    name: zricethezav/gitleaks:v8.24.3
+    entrypoint: [""]
+  variables:
+    GITLEAKS_EXIT_CODE: "${GITLEAKS_EXIT_CODE:-1}"
+  script:
+    - |
+      set -euo pipefail
+      EXTRA=()
+      if [ -n "${GITLEAKS_CONFIG:-}" ] && [ -f "${GITLEAKS_CONFIG}" ]; then
+        EXTRA+=(--config "${GITLEAKS_CONFIG}")
+      elif [ -f .gitleaks.toml ]; then
+        EXTRA+=(--config .gitleaks.toml)
+      fi
+      # Prefer full history when available (merge request / clone depth).
+      if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        gitleaks detect --source . --verbose --redact --exit-code "${GITLEAKS_EXIT_CODE}" "${EXTRA[@]}"
+      else
+        gitleaks dir . --verbose --redact --exit-code "${GITLEAKS_EXIT_CODE}" "${EXTRA[@]}"
+      fi
+  allow_failure: false
+
+security:gitleaks:
+  extends: .security_gitleaks
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

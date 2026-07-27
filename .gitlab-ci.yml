@@ -1,12 +1,17 @@
 include:
   - local: templates/lint/yaml.yml
   - local: templates/lint/shell.yml
+  - local: templates/security/gitleaks.yml
 
 stages:
   - lint
+  - validate
 
 lint:yaml:
   extends: .lint_yaml
 
 lint:shell:
   extends: .lint_shell
+
+security:gitleaks:
+  extends: .security_gitleaks

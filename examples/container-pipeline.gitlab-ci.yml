@@ -1,4 +1,4 @@
-# Example: container app pipeline with Trivy + GitLab container scanning
+# Example: container app pipeline — Trivy + Syft + Cosign + Harbor
 #
 # Copy relevant sections into your app repo .gitlab-ci.yml.
 # Requires GitLab Container Registry (CI_REGISTRY_IMAGE) and a Dockerfile.
@@ -8,13 +8,17 @@ include:
     ref: main
     file:
       - templates/lint/yaml.yml
+      - templates/security/gitleaks.yml
       - templates/container/build.yml
       - templates/container/trivy-image-scan.yml
+      - templates/container/syft-sbom.yml
       - templates/container/container-scan.yml
+      - templates/container/cosign-sign.yml
       - templates/container/harbor-push.yml
 
 stages:
   - lint
+  - validate
   - build
   - scan
   - publish
@@ -23,5 +27,4 @@ variables:
   TRIVY_SEVERITY: "CRITICAL,HIGH"
   HARBOR_PROJECT: "apps"
 
-# Harbor-only apps: swap build.yml for harbor-build-push.yml and override
-# container:trivy-image-scan needs to container:harbor-build-push.
+# Harbor-only apps: see examples/harbor-only-pipeline.gitlab-ci.yml

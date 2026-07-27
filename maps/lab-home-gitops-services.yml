@@ -33,3 +33,11 @@ longhorn:
 cert-manager:
   paths: [platform/cert-manager/**]
   component: cert-manager
+
+kyverno:
+  paths: [platform/kyverno/**]
+  component: kyverno
+
+secrets:
+  paths: [platform/secrets/**]
+  component: secrets

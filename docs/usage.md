@@ -18,27 +18,29 @@ Push to `platform/keycloak/**` only → GitLab runs keycloak-scoped validate job
 
 ## App repos
 
-### Container image (build → scan → publish)
+### Container image (gitleaks → build → scan → sign → publish)
 
 ```yaml
 include:
   - project: homelab/pipeline-templates
     ref: main
     file:
-      - templates/lint/yaml.yml
+      - templates/security/gitleaks.yml
       - templates/container/build.yml
       - templates/container/trivy-image-scan.yml
-      - templates/container/container-scan.yml
+      - templates/container/syft-sbom.yml
+      - templates/container/cosign-sign.yml
       - templates/container/harbor-push.yml
 
 stages:
-  - lint
+  - validate
   - build
   - scan
   - publish
 ```
 
 Set `HARBOR_PROJECT`, `HARBOR_USERNAME`, and `HARBOR_PASSWORD` for Harbor jobs.
+Set `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD` for signing (Infisical `pipelines`/`cosign`).
 See [container-scanning.md](container-scanning.md).
 
 Harbor-only apps (no GitLab registry):
@@ -48,8 +50,11 @@ include:
   - project: homelab/pipeline-templates
     ref: main
     file:
+      - templates/security/gitleaks.yml
       - templates/container/harbor-build-push.yml
       - templates/container/trivy-image-scan.yml
+      - templates/container/syft-sbom.yml
+      - templates/container/cosign-sign.yml
 ```
 
 See [examples/harbor-only-pipeline.gitlab-ci.yml](../examples/harbor-only-pipeline.gitlab-ci.yml).

@@ -1,15 +1,20 @@
-# Example: Harbor-only app (build + push to Harbor, no GitLab registry)
+# Example: Harbor-only app with Trivy + Syft + Cosign
 
 include:
   - project: homelab/pipeline-templates
     ref: main
     file:
+      - templates/security/gitleaks.yml
       - templates/container/harbor-build-push.yml
       - templates/container/trivy-image-scan.yml
+      - templates/container/syft-sbom.yml
+      - templates/container/cosign-sign.yml
 
 stages:
+  - validate
   - build
   - scan
+  - publish
 
 variables:
   HARBOR_PROJECT: "apps"
@@ -21,3 +26,15 @@ container:trivy-image-scan:
   extends: .container_trivy_image_scan
   needs:
     - job: container:harbor-build-push
+
+container:syft-sbom:
+  extends: .container_syft_sbom
+  needs:
+    - job: container:harbor-build-push
+
+container:cosign-sign:
+  extends: .container_cosign_sign
+  needs:
+    - job: container:trivy-image-scan
+    - job: container:syft-sbom
+  # Requires CI vars: COSIGN_PRIVATE_KEY, COSIGN_PASSWORD, HARBOR_USERNAME, HARBOR_PASSWORD

@@ -1,0 +1,41 @@
+# Generate SBOM with Syft and publish as a CI artifact (SPDX JSON).
+# Run after an image build; set CONTAINER_IMAGE to the scanned tag.
+#
+# Optional:
+#   SYFT_OUTPUT      — path for SBOM file (default: sbom.spdx.json)
+#   SYFT_FORMAT      — syft output format (default: spdx-json)
+
+.container_syft_sbom:
+  stage: scan
+  image:
+    name: anchore/syft:v1.21.0
+    entrypoint: [""]
+  variables:
+    SYFT_OUTPUT: "${SYFT_OUTPUT:-sbom.spdx.json}"
+    SYFT_FORMAT: "${SYFT_FORMAT:-spdx-json}"
+  script:
+    - |
+      set -euo pipefail
+      if [ -z "${CONTAINER_IMAGE:-}" ]; then
+        echo "CONTAINER_IMAGE is required" >&2
+        exit 1
+      fi
+      syft "${CONTAINER_IMAGE}" -o "${SYFT_FORMAT}=${SYFT_OUTPUT}"
+      ls -la "${SYFT_OUTPUT}"
+  artifacts:
+    name: "sbom-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - "${SYFT_OUTPUT:-sbom.spdx.json}"
+    expire_in: 30 days
+    when: always
+  needs:
+    - job: container:build
+      optional: true
+  rules:
+    - if: $CONTAINER_IMAGE
+    - if: $CI_REGISTRY_IMAGE
+      variables:
+        CONTAINER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+container:syft-sbom:
+  extends: .container_syft_sbom

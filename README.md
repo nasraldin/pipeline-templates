@@ -25,14 +25,17 @@ include:
 
 ## Container scanning
 
-| Template | Job | When to include |
-| -------- | --- | --------------- |
-| `templates/container/build.yml` | `container:build` | Build + push to GitLab registry |
-| `templates/container/harbor-build-push.yml` | `container:harbor-build-push` | Build + push directly to Harbor |
-| `templates/container/trivy-image-scan.yml` | `container:trivy-image-scan` | CVE gate after build |
-| `templates/container/container-scan.yml` | `container:container-scan` | GitLab Security report |
-| `templates/container/harbor-push.yml` | `container:harbor-push` | Retag GitLab image → Harbor (no build) |
-| `templates/security/trivy-filesystem.yml` | `security:trivy-fs-scan` | Infra/GitOps (no image) |
+| Template                                    | Job                           | When to include                        |
+| ------------------------------------------- | ----------------------------- | -------------------------------------- |
+| `templates/security/gitleaks.yml`           | `security:gitleaks`           | All repos (secret leak scan)           |
+| `templates/security/trivy-filesystem.yml`   | `security:trivy-fs-scan`      | Infra/GitOps (no image)                |
+| `templates/container/build.yml`             | `container:build`             | Build + push to GitLab registry        |
+| `templates/container/harbor-build-push.yml` | `container:harbor-build-push` | Build + push directly to Harbor        |
+| `templates/container/trivy-image-scan.yml`  | `container:trivy-image-scan`  | CVE gate after build                   |
+| `templates/container/syft-sbom.yml`         | `container:syft-sbom`         | SBOM artifact after build              |
+| `templates/container/cosign-sign.yml`       | `container:cosign-sign`       | Sign image (Cosign key pair)           |
+| `templates/container/container-scan.yml`    | `container:container-scan`    | GitLab Security report                 |
+| `templates/container/harbor-push.yml`       | `container:harbor-push`       | Retag GitLab image → Harbor (no build) |
 
 See [docs/container-scanning.md](docs/container-scanning.md).
 

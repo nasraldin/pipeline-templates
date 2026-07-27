@@ -1,0 +1,58 @@
+# Sign a container image with Cosign (key pair). Store private key in Infisical
+# pipelines/cosign or GitLab CI File variables — never in Git.
+#
+# Required CI variables:
+#   COSIGN_PRIVATE_KEY  — PEM contents (File or Variable)
+#   COSIGN_PASSWORD     — key password (or empty if unencrypted)
+#   CONTAINER_IMAGE     — image ref to sign (Harbor or GitLab registry)
+#
+# Optional:
+#   COSIGN_YES=true     — non-interactive (default)
+#   HARBOR_*            — if signing a Harbor image that needs auth
+
+.container_cosign_sign:
+  stage: publish
+  image:
+    name: gcr.io/projectsigstore/cosign:v2.4.3
+    entrypoint: [""]
+  variables:
+    COSIGN_YES: "true"
+    HARBOR_REGISTRY: "${HARBOR_REGISTRY:-harbor.nasraldin.com}"
+  script:
+    - |
+      set -euo pipefail
+      if [ -z "${CONTAINER_IMAGE:-}" ]; then
+        echo "CONTAINER_IMAGE is required" >&2
+        exit 1
+      fi
+      if [ -z "${COSIGN_PRIVATE_KEY:-}" ]; then
+        echo "COSIGN_PRIVATE_KEY is required (Infisical pipelines/cosign or CI File var)" >&2
+        exit 1
+      fi
+      KEY_FILE="$(mktemp)"
+      trap 'rm -f "${KEY_FILE}"' EXIT
+      # Support File-type vars (path) or Variable-type (PEM body).
+      if [ -f "${COSIGN_PRIVATE_KEY}" ]; then
+        cp "${COSIGN_PRIVATE_KEY}" "${KEY_FILE}"
+      else
+        printf '%s\n' "${COSIGN_PRIVATE_KEY}" > "${KEY_FILE}"
+      fi
+      if [ -n "${HARBOR_USERNAME:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
+        mkdir -p "${HOME}/.docker"
+        AUTH="$(printf '%s:%s' "${HARBOR_USERNAME}" "${HARBOR_PASSWORD}" | base64 | tr -d '\n')"
+        printf '{"auths":{"%s":{"auth":"%s"}}}\n' "${HARBOR_REGISTRY}" "${AUTH}" > "${HOME}/.docker/config.json"
+      fi
+      cosign sign --key "${KEY_FILE}" "${CONTAINER_IMAGE}"
+  needs:
+    - job: container:trivy-image-scan
+      optional: true
+    - job: container:syft-sbom
+      optional: true
+  rules:
+    - if: $COSIGN_PRIVATE_KEY && $CONTAINER_IMAGE
+    - if: $COSIGN_PRIVATE_KEY && $CI_REGISTRY_IMAGE
+      variables:
+        CONTAINER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+
+container:cosign-sign:
+  extends: .container_cosign_sign
