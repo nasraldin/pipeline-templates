@@ -1,0 +1,11 @@
+.lint_yaml:
+  stage: lint
+  image: pipelinecomponents/yamllint:latest
+  script:
+    - yamllint -c .yamllint.yaml .
+  rules:
+    - changes:
+        - "**/*.{yml,yaml}"
+
+lint:yaml:
+  extends: .lint_yaml

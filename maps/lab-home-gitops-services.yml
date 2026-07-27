@@ -1,0 +1,35 @@
+keycloak:
+  paths: [platform/keycloak/**]
+  component: keycloak
+
+sonarqube:
+  paths: [platform/sonarqube/**]
+  component: sonarqube
+
+harbor:
+  paths: [platform/harbor/**]
+  component: harbor
+
+verdaccio:
+  paths: [platform/verdaccio/**]
+  component: verdaccio
+
+observability:
+  paths: [platform/observability/**]
+  component: observability
+
+gitlab-runner:
+  paths: [platform/gitlab-runner/**]
+  component: gitlab-runner
+
+data:
+  paths: [platform/data/**]
+  component: data
+
+longhorn:
+  paths: [platform/longhorn/**]
+  component: longhorn
+
+cert-manager:
+  paths: [platform/cert-manager/**]
+  component: cert-manager

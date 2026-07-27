@@ -1,0 +1,12 @@
+.lint_json:
+  stage: lint
+  image: alpine:3.21
+  script:
+    - apk add --no-cache jq
+    - find . -name '*.json' -not -path './.git/*' -exec jq empty {} \;
+  rules:
+    - changes:
+        - "**/*.json"
+
+lint:json:
+  extends: .lint_json

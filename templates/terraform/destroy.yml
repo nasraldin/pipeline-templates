@@ -1,0 +1,19 @@
+.terraform_destroy:
+  stage: apply
+  image:
+    name: hashicorp/terraform:1.12
+    entrypoint: [""]
+  variables:
+    TF_ACTION: destroy
+    TF_AUTO_APPROVE: "true"
+    TF_DIR: terraform
+  script:
+    - cd "${TF_DIR}" && terraform init -input=false
+    - bash scripts/ci-run.sh
+  when: manual
+  resource_group: terraform-apply
+  rules:
+    - if: $TF_TARGET_GUESTS
+
+terraform:destroy:targeted:
+  extends: .terraform_destroy

@@ -1,0 +1,18 @@
+.lint_terraform:
+  stage: lint
+  image:
+    name: hashicorp/terraform:1.12
+    entrypoint: [""]
+  variables:
+    TF_DIR: terraform
+  script:
+    - cd "${TF_DIR}"
+    - terraform fmt -check -recursive
+    - terraform init -backend=false
+    - terraform validate
+  rules:
+    - changes:
+        - terraform/**/*
+
+lint:terraform:
+  extends: .lint_terraform

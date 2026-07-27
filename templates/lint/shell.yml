@@ -1,0 +1,13 @@
+.lint_shell:
+  stage: lint
+  image: koalaman/shellcheck-alpine:stable
+  script:
+    - find scripts terraform/scripts ansible/scripts -name '*.sh' -print0 2>/dev/null | xargs -0 -r shellcheck
+  rules:
+    - changes:
+        - scripts/**/*
+        - terraform/scripts/**/*
+        - ansible/scripts/**/*
+
+lint:shell:
+  extends: .lint_shell

@@ -1,0 +1,15 @@
+.gitops_helm_lint:
+  stage: lint
+  image: alpine/helm:3.17
+  script:
+    - |
+      find platform -name 'apps.yaml' -o -name 'values.yaml' | while read -r f; do
+        echo "==> lint ${f}"
+        yamllint "${f}" || true
+      done
+  rules:
+    - changes:
+        - platform/**/*
+
+gitops:helm-lint:
+  extends: .gitops_helm_lint

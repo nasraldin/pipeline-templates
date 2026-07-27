@@ -1,0 +1,30 @@
+.terraform_plan:
+  stage: plan
+  image:
+    name: hashicorp/terraform:1.12
+    entrypoint: [""]
+  variables:
+    TF_ACTION: plan
+    TF_DIR: terraform
+  script:
+    - cd "${TF_DIR}" && terraform init -input=false
+    - bash ../pipeline-templates/scripts/ci-run-terraform.sh || bash scripts/ci-run.sh
+  artifacts:
+    paths:
+      - terraform/tfplan
+      - terraform/tfplan.txt
+    expire_in: 1 week
+  resource_group: terraform-plan
+
+terraform:plan:
+  extends: .terraform_plan
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+terraform:plan:targeted:
+  extends: .terraform_plan
+  variables:
+    TF_TARGET_GUESTS: $TF_TARGET_GUESTS
+  rules:
+    - if: $TF_TARGET_GUESTS

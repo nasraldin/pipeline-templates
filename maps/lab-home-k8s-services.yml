@@ -1,0 +1,64 @@
+infra-01:
+  paths:
+    - ansible/roles/adguard_home/**
+    - ansible/roles/technitium_dns/**
+    - ansible/roles/infisical/**
+    - ansible/roles/aistor/**
+    - ansible/playbooks/infra.yml
+    - terraform/terraform.tfvars
+  tf_target: infra-01
+  ansible_playbook: playbooks/infra.yml
+  ansible_limit: infra-01
+
+gitlab-01:
+  paths:
+    - ansible/roles/gitlab_omnibus/**
+    - ansible/playbooks/gitlab.yml
+  tf_target: gitlab-01
+  ansible_playbook: playbooks/gitlab.yml
+  ansible_limit: gitlab-01
+
+runner-01:
+  paths:
+    - ansible/roles/gitlab_runner/**
+    - ansible/playbooks/runner.yml
+  tf_target: runner-01
+  ansible_playbook: playbooks/runner.yml
+  ansible_limit: runner-01
+
+docker-01:
+  paths:
+    - ansible/roles/npm/**
+    - ansible/roles/it_tools/**
+    - ansible/roles/mailpit/**
+    - ansible/playbooks/docker-hosts.yml
+  tf_target: docker-01
+  ansible_playbook: playbooks/docker-hosts.yml
+  ansible_limit: docker-01
+
+dockhand:
+  paths:
+    - ansible/roles/dockhand/**
+    - ansible/roles/hawser/**
+    - ansible/playbooks/dockhand.yml
+    - ansible/playbooks/dockhand-agents.yml
+  tf_target: dockhand
+  ansible_playbook: playbooks/dockhand.yml
+  ansible_limit: dockhand
+
+k8s-cp-01:
+  paths:
+    - ansible/roles/k8s_*/**
+    - ansible/playbooks/k8s.yml
+    - scripts/install-cilium.sh
+    - scripts/install-argocd.sh
+  tf_target: k8s-cp-01
+  ansible_playbook: playbooks/k8s.yml
+  ansible_limit: k8s-cp-01
+
+k8s-workers:
+  paths:
+    - ansible/playbooks/k8s.yml
+  tf_target: k8s-w-01,k8s-w-02,k8s-w-03
+  ansible_playbook: playbooks/k8s.yml
+  ansible_limit: k8s_workers

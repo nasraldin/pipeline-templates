@@ -1,0 +1,15 @@
+.lint_ansible:
+  stage: lint
+  image: cytopia/ansible-lint:latest
+  variables:
+    ANSIBLE_DIR: ansible
+  script:
+    - cd "${ANSIBLE_DIR}"
+    - ansible-lint playbooks/
+    - ansible-playbook --syntax-check -i inventory/hosts.yml playbooks/site.yml
+  rules:
+    - changes:
+        - ansible/**/*
+
+lint:ansible:
+  extends: .lint_ansible

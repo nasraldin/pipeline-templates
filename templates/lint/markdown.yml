@@ -1,0 +1,12 @@
+.lint_markdown:
+  stage: lint
+  image: node:22-alpine
+  script:
+    - npm install -g markdownlint-cli
+    - markdownlint '**/*.md' --ignore node_modules
+  rules:
+    - changes:
+        - "**/*.md"
+
+lint:markdown:
+  extends: .lint_markdown

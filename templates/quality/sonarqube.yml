@@ -1,0 +1,17 @@
+.sonarqube_scan:
+  stage: quality
+  image: sonarsource/sonar-scanner-cli:11
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  script:
+    - sonar-scanner
+      -Dsonar.projectKey=${CI_PROJECT_PATH_SLUG}
+      -Dsonar.sources=.
+      -Dsonar.host.url=${SONAR_HOST_URL}
+      -Dsonar.login=${SONAR_TOKEN}
+  rules:
+    - if: $SONAR_TOKEN
+
+quality:sonarqube:
+  extends: .sonarqube_scan

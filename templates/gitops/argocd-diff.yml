@@ -1,0 +1,10 @@
+.gitops_argocd_diff:
+  stage: validate
+  image: quay.io/argoproj/argocd:v3.0.6
+  script:
+    - argocd app diff platform-${GITOPS_COMPONENT} --local platform/${GITOPS_COMPONENT} || true
+  rules:
+    - if: $GITOPS_COMPONENT
+
+gitops:argocd-diff:
+  extends: .gitops_argocd_diff

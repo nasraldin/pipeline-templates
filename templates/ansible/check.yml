@@ -1,0 +1,23 @@
+.ansible_check:
+  stage: validate
+  image: cytopia/ansible:latest-tools
+  variables:
+    ANSIBLE_CHECK: "true"
+    ANSIBLE_DIR: ansible
+  script:
+    - cd "${ANSIBLE_DIR}" && bash scripts/ci-run.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - changes:
+        - ansible/**/*
+
+ansible:check:
+  extends: .ansible_check
+
+ansible:check:targeted:
+  extends: .ansible_check
+  variables:
+    ANSIBLE_LIMIT: $ANSIBLE_LIMIT
+    ANSIBLE_PLAYBOOK: $ANSIBLE_PLAYBOOK
+  rules:
+    - if: $ANSIBLE_LIMIT
