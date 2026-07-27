@@ -1,0 +1,31 @@
+# Example: container app pipeline with Trivy + GitLab container scanning
+#
+# Copy relevant sections into your app repo .gitlab-ci.yml.
+# Requires GitLab Container Registry (CI_REGISTRY_IMAGE) and a Dockerfile.
+
+include:
+  - project: homelab/pipeline-templates
+    ref: main
+    file:
+      - templates/lint/yaml.yml
+      - templates/container/build.yml
+      - templates/container/trivy-image-scan.yml
+      - templates/container/gitlab-container-scanning.yml
+      - templates/container/harbor-push.yml
+
+stages:
+  - lint
+  - build
+  - scan
+  - publish
+
+variables:
+  TRIVY_SEVERITY: "CRITICAL,HIGH"
+  HARBOR_PROJECT: "apps"
+
+# Optional: override scan jobs (anchors are in included templates)
+# container:trivy-image-scan:
+#   extends: .container_trivy_image_scan
+#
+# container:gitlab-scan:
+#   extends: .container_gitlab_scan

@@ -5,14 +5,27 @@
     - docker:27-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
-    HARBOR_REGISTRY: harbor.nasraldin.com
-  script:
+    HARBOR_REGISTRY: "${HARBOR_REGISTRY:-harbor.nasraldin.com}"
+    CONTAINER_IMAGE: "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+    HARBOR_IMAGE: "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
     - echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin
-    - docker tag "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
-    - docker push "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
+  script:
+    - docker pull "${CONTAINER_IMAGE}"
+    - docker tag "${CONTAINER_IMAGE}" "${HARBOR_IMAGE}"
+    - docker push "${HARBOR_IMAGE}"
   when: manual
+  needs:
+    - job: container:build
+    - job: container:trivy-image-scan
+      optional: true
+    - job: container:gitlab-scan
+      optional: true
   rules:
-    - if: $HARBOR_PASSWORD
+    - if: $HARBOR_PASSWORD && $CI_REGISTRY_IMAGE
+      exists:
+        - Dockerfile
 
 container:harbor-push:
   extends: .container_harbor_push

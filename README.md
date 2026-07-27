@@ -23,6 +23,18 @@ include:
 | `ANSIBLE_LIMIT`    | `docker-01`           | Single host                                    |
 | `GITOPS_COMPONENT` | `keycloak`            | Validate one platform directory                |
 
+## Container scanning
+
+| Template | Job | When to include |
+| -------- | --- | --------------- |
+| `templates/container/build.yml` | `container:build` | App repos with `Dockerfile` |
+| `templates/container/trivy-image-scan.yml` | `container:trivy-image-scan` | CVE gate after build |
+| `templates/container/gitlab-container-scanning.yml` | `container:gitlab-scan` | GitLab Security report |
+| `templates/container/harbor-push.yml` | `container:harbor-push` | Manual Harbor publish |
+| `templates/security/trivy-filesystem.yml` | `security:trivy-fs-scan` | Infra/GitOps (no image) |
+
+See [docs/container-scanning.md](docs/container-scanning.md).
+
 Automatic path detection: `scripts/detect-changed-services.sh` + `maps/*.yml`.
 
 ## Safety

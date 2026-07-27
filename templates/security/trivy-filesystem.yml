@@ -1,0 +1,22 @@
+.security_trivy_filesystem:
+  stage: validate
+  image:
+    name: aquasec/trivy:0.58.2
+    entrypoint: [""]
+  variables:
+    TRIVY_SEVERITY: "${TRIVY_SEVERITY:-CRITICAL,HIGH}"
+    TRIVY_SCANNERS: "${TRIVY_SCANNERS:-vuln,secret,misconfig}"
+    TRIVY_EXIT_CODE: "${TRIVY_EXIT_CODE:-1}"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_DISABLE_VEX_NOTICE: "true"
+    TRIVY_SCAN_PATH: "${TRIVY_SCAN_PATH:-.}"
+  script:
+    - |
+      trivy fs "${TRIVY_SCAN_PATH}" \
+        --exit-code "${TRIVY_EXIT_CODE}" \
+        --severity "${TRIVY_SEVERITY}" \
+        --scanners "${TRIVY_SCANNERS}" \
+        --format table
+
+security:trivy-fs-scan:
+  extends: .security_trivy_filesystem

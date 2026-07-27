@@ -18,6 +18,31 @@ Push to `platform/keycloak/**` only → GitLab runs keycloak-scoped validate job
 
 ## App repos
 
+### Container image (build → scan → publish)
+
+```yaml
+include:
+  - project: homelab/pipeline-templates
+    ref: main
+    file:
+      - templates/lint/yaml.yml
+      - templates/container/build.yml
+      - templates/container/trivy-image-scan.yml
+      - templates/container/gitlab-container-scanning.yml
+      - templates/container/harbor-push.yml
+
+stages:
+  - lint
+  - build
+  - scan
+  - publish
+```
+
+Set `HARBOR_PROJECT`, `HARBOR_USERNAME`, and `HARBOR_PASSWORD` for Harbor push.
+See [container-scanning.md](container-scanning.md).
+
+### Quality gate only (no image)
+
 ```yaml
 include:
   - project: homelab/pipeline-templates
@@ -25,7 +50,6 @@ include:
     file:
       - templates/lint/yaml.yml
       - templates/quality/sonarqube.yml
-      - templates/container/build.yml
 ```
 
 Set `SONAR_HOST_URL` and `SONAR_TOKEN` in CI/CD variables.

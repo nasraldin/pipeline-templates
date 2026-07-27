@@ -1,0 +1,19 @@
+include:
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
+
+.container_gitlab_scan:
+  extends: container_scanning
+  stage: scan
+  variables:
+    CS_IMAGE: "${CONTAINER_IMAGE:-$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA}"
+    GIT_STRATEGY: fetch
+  rules:
+    - if: $CI_REGISTRY_IMAGE
+      exists:
+        - Dockerfile
+
+container:gitlab-scan:
+  extends: .container_gitlab_scan
+  needs:
+    - job: container:build
+      optional: false

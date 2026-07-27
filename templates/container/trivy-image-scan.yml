@@ -1,0 +1,31 @@
+.container_trivy_image_scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:0.58.2
+    entrypoint: [""]
+  variables:
+    CONTAINER_IMAGE: "${CONTAINER_IMAGE:-$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA}"
+    TRIVY_SEVERITY: "${TRIVY_SEVERITY:-CRITICAL,HIGH}"
+    TRIVY_EXIT_CODE: "${TRIVY_EXIT_CODE:-1}"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_DISABLE_VEX_NOTICE: "true"
+    TRIVY_USERNAME: "${CI_REGISTRY_USER}"
+    TRIVY_PASSWORD: "${CI_REGISTRY_PASSWORD}"
+  script:
+    - |
+      trivy image "${CONTAINER_IMAGE}" \
+        --username "${TRIVY_USERNAME}" \
+        --password "${TRIVY_PASSWORD}" \
+        --exit-code "${TRIVY_EXIT_CODE}" \
+        --severity "${TRIVY_SEVERITY}" \
+        --format table
+  rules:
+    - if: $CI_REGISTRY_IMAGE
+      exists:
+        - Dockerfile
+
+container:trivy-image-scan:
+  extends: .container_trivy_image_scan
+  needs:
+    - job: container:build
+      optional: false
