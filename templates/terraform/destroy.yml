@@ -15,7 +15,7 @@
   when: manual
   resource_group: terraform-apply
   rules:
-    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != ""
+    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != "" && $TF_TARGET_GUESTS !~ /\$/
 
 terraform:destroy:targeted:
   extends: .terraform_destroy

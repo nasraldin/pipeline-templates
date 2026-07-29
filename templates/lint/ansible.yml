@@ -1,7 +1,7 @@
 .lint_ansible:
   stage: lint
   image:
-    name: cytopia/ansible-lint:latest
+    name: pipelinecomponents/ansible-lint:latest
     entrypoint: [""]
   variables:
     ANSIBLE_DIR: ansible
@@ -9,6 +9,7 @@
     - |
       set -euo pipefail
       cd "${ANSIBLE_DIR}"
+      # Ensure ansible-core is new enough for ansible.builtin.deb822_repository (≥2.15).
       ansible-lint playbooks/
       ansible-playbook --syntax-check -i inventory/hosts.yml playbooks/site.yml
   rules:

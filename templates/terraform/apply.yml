@@ -23,6 +23,5 @@ terraform:apply:
 terraform:apply:targeted:
   extends: .terraform_apply
   variables:
-    TF_TARGET_GUESTS: $TF_TARGET_GUESTS
   rules:
-    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != ""
+    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != "" && $TF_TARGET_GUESTS !~ /\$/

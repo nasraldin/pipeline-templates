@@ -10,12 +10,22 @@
     - apk add --no-cache bash >/dev/null
   script:
     - cd "${TF_DIR}" && terraform init -input=false
-    - bash scripts/ci-run.sh
+    - cd "${TF_DIR}" && terraform validate
+    - |
+      set -eu
+      cd "${TF_DIR}"
+      # Live plan needs Proxmox creds via TF_VAR_* / CI variables; skip when unset.
+      if [ -z "${TF_VAR_proxmox_endpoint:-}" ] || [ -z "${TF_VAR_proxmox_api_token:-}" ] || [ -z "${TF_VAR_node_name:-}" ]; then
+        echo "Skipping terraform plan: TF_VAR_proxmox_endpoint / TF_VAR_proxmox_api_token / TF_VAR_node_name not set in CI."
+        exit 0
+      fi
+      bash scripts/ci-run.sh
   artifacts:
     paths:
       - terraform/tfplan
       - terraform/tfplan.txt
     expire_in: 1 week
+    when: on_success
   resource_group: terraform-plan
 
 terraform:plan:
@@ -26,7 +36,6 @@ terraform:plan:
 
 terraform:plan:targeted:
   extends: .terraform_plan
-  variables:
-    TF_TARGET_GUESTS: $TF_TARGET_GUESTS
   rules:
-    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != ""
+    # Only when an explicit non-empty guest list is provided (not the literal $TF_TARGET_GUESTS).
+    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != "" && $TF_TARGET_GUESTS !~ /\$/
