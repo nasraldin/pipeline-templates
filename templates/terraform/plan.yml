@@ -9,11 +9,12 @@
   before_script:
     - apk add --no-cache bash >/dev/null
   script:
-    - cd "${TF_DIR}" && terraform init -input=false
-    - cd "${TF_DIR}" && terraform validate
     - |
       set -eu
-      cd "${TF_DIR}"
+      TF_ROOT="${CI_PROJECT_DIR:-.}/${TF_DIR}"
+      cd "${TF_ROOT}"
+      terraform init -input=false
+      terraform validate
       # Live plan needs Proxmox creds via TF_VAR_* / CI variables; skip when unset.
       if [ -z "${TF_VAR_proxmox_endpoint:-}" ] || [ -z "${TF_VAR_proxmox_api_token:-}" ] || [ -z "${TF_VAR_node_name:-}" ]; then
         echo "Skipping terraform plan: TF_VAR_proxmox_endpoint / TF_VAR_proxmox_api_token / TF_VAR_node_name not set in CI."

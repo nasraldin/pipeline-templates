@@ -9,7 +9,9 @@
     - |
       set -euo pipefail
       cd "${ANSIBLE_DIR}"
-      # Use the ansible-core bundled with ansible-lint (needs >=2.15 for deb822_repository).
+      # GitLab build dirs are world-writable; ansible ignores ansible.cfg there.
+      export ANSIBLE_ROLES_PATH="${PWD}/roles"
+      export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
       ansible --version
       ansible-lint -v playbooks/
       ansible-playbook --syntax-check -i inventory/hosts.yml playbooks/site.yml
