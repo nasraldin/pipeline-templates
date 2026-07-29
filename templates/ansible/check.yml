@@ -4,17 +4,22 @@
     name: cytopia/ansible:latest-tools
     entrypoint: [""]
   variables:
+    ANSIBLE_CHECK: "true"
     ANSIBLE_DIR: ansible
   script:
     - |
       set -eu
       cd "${ANSIBLE_DIR}"
-      # GitLab build dirs are world-writable; ansible ignores ansible.cfg there.
+      # World-writable CI workspaces ignore ansible.cfg — pin roles path.
       export ANSIBLE_ROLES_PATH="${PWD}/roles"
       export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
-      # Default CI gate is syntax-only — live --check needs SSH keys + reachable guests.
-      PLAYBOOK="${ANSIBLE_PLAYBOOK:-playbooks/site.yml}"
-      ansible-playbook --syntax-check -i inventory/hosts.yml "${PLAYBOOK}"
+      ansible-playbook --syntax-check -i inventory/hosts.yml "${ANSIBLE_PLAYBOOK:-playbooks/site.yml}"
+      # Live --check needs SSH to inventory hosts; skip when no CI key is present.
+      if [ -z "${ANSIBLE_PRIVATE_KEY:-}${SSH_PRIVATE_KEY:-}" ] && [ ! -f "${HOME}/.ssh/id_rsa" ] && [ ! -f "${HOME}/.ssh/id_ed25519" ]; then
+        echo "Skipping ansible --check: no SSH private key in CI (syntax-check passed)."
+        exit 0
+      fi
+      bash scripts/ci-run.sh
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - changes:
@@ -23,27 +28,8 @@
 ansible:check:
   extends: .ansible_check
 
-# Optional live dry-run against inventory (manual — needs CI SSH agent / reachable hosts).
-ansible:check:live:
-  extends: .ansible_check
-  variables:
-    ANSIBLE_CHECK: "true"
-  script:
-    - |
-      set -eu
-      cd "${ANSIBLE_DIR}"
-      export ANSIBLE_ROLES_PATH="${PWD}/roles"
-      export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
-      bash scripts/ci-run.sh
-  when: manual
-  allow_failure: true
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-      allow_failure: true
-
-# Do not re-assign ANSIBLE_* from $ANSIBLE_* (circular → literal "$ANSIBLE_LIMIT").
 ansible:check:targeted:
   extends: .ansible_check
   rules:
+    # Require a real limit; ignore unexpanded "$ANSIBLE_LIMIT" from GitLab UI defaults.
     - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != "" && $ANSIBLE_LIMIT !~ /\$/
