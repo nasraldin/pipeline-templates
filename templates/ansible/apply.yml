@@ -6,7 +6,12 @@
   variables:
     ANSIBLE_DIR: ansible
   script:
-    - cd "${ANSIBLE_DIR}" && bash scripts/ci-run.sh
+    - |
+      set -eu
+      cd "${ANSIBLE_DIR}"
+      export ANSIBLE_ROLES_PATH="${PWD}/roles"
+      export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
+      bash scripts/ci-run.sh
   when: manual
   resource_group: ansible-apply
   rules:
@@ -17,8 +22,5 @@ ansible:apply:
 
 ansible:apply:targeted:
   extends: .ansible_apply
-  variables:
-    ANSIBLE_LIMIT: $ANSIBLE_LIMIT
-    ANSIBLE_PLAYBOOK: $ANSIBLE_PLAYBOOK
   rules:
-    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != ""
+    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != "" && $ANSIBLE_LIMIT !~ /\$/

@@ -7,7 +7,13 @@
     ANSIBLE_CHECK: "true"
     ANSIBLE_DIR: ansible
   script:
-    - cd "${ANSIBLE_DIR}" && bash scripts/ci-run.sh
+    - |
+      set -eu
+      cd "${ANSIBLE_DIR}"
+      # World-writable CI workspaces ignore ansible.cfg — pin roles path.
+      export ANSIBLE_ROLES_PATH="${PWD}/roles"
+      export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
+      bash scripts/ci-run.sh
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - changes:
@@ -18,8 +24,6 @@ ansible:check:
 
 ansible:check:targeted:
   extends: .ansible_check
-  variables:
-    ANSIBLE_LIMIT: $ANSIBLE_LIMIT
-    ANSIBLE_PLAYBOOK: $ANSIBLE_PLAYBOOK
   rules:
-    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != ""
+    # Require a real limit; ignore unexpanded "$ANSIBLE_LIMIT" from GitLab UI defaults.
+    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != "" && $ANSIBLE_LIMIT !~ /\$/
