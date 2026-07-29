@@ -1,6 +1,8 @@
 .ansible_check:
   stage: validate
-  image: cytopia/ansible:latest-tools
+  image:
+    name: cytopia/ansible:latest-tools
+    entrypoint: [""]
   variables:
     ANSIBLE_CHECK: "true"
     ANSIBLE_DIR: ansible
@@ -20,4 +22,4 @@ ansible:check:targeted:
     ANSIBLE_LIMIT: $ANSIBLE_LIMIT
     ANSIBLE_PLAYBOOK: $ANSIBLE_PLAYBOOK
   rules:
-    - if: $ANSIBLE_LIMIT
+    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != ""

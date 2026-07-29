@@ -1,6 +1,8 @@
 .ansible_apply:
   stage: apply
-  image: cytopia/ansible:latest-tools
+  image:
+    name: cytopia/ansible:latest-tools
+    entrypoint: [""]
   variables:
     ANSIBLE_DIR: ansible
   script:
@@ -19,4 +21,4 @@ ansible:apply:targeted:
     ANSIBLE_LIMIT: $ANSIBLE_LIMIT
     ANSIBLE_PLAYBOOK: $ANSIBLE_PLAYBOOK
   rules:
-    - if: $ANSIBLE_LIMIT
+    - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != ""
