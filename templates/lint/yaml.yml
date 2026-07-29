@@ -1,8 +1,19 @@
 .lint_yaml:
   stage: lint
-  image: pipelinecomponents/yamllint:latest
+  image:
+    name: pipelinecomponents/yamllint:latest
+    entrypoint: [""]
   script:
-    - yamllint -c .yamllint.yaml .
+    - |
+      set -euo pipefail
+      if [ -f .yamllint.yaml ]; then
+        yamllint -c .yamllint.yaml .
+      elif [ -f .yamllint.yml ]; then
+        yamllint -c .yamllint.yml .
+      else
+        # Relaxed defaults when a repo has not committed a config yet.
+        yamllint -d '{extends: relaxed, rules: {line-length: {max: 200}}}' .
+      fi
   rules:
     - changes:
         - "**/*.{yml,yaml}"

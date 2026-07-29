@@ -1,12 +1,16 @@
 .lint_ansible:
   stage: lint
-  image: cytopia/ansible-lint:latest
+  image:
+    name: cytopia/ansible-lint:latest
+    entrypoint: [""]
   variables:
     ANSIBLE_DIR: ansible
   script:
-    - cd "${ANSIBLE_DIR}"
-    - ansible-lint playbooks/
-    - ansible-playbook --syntax-check -i inventory/hosts.yml playbooks/site.yml
+    - |
+      set -euo pipefail
+      cd "${ANSIBLE_DIR}"
+      ansible-lint playbooks/
+      ansible-playbook --syntax-check -i inventory/hosts.yml playbooks/site.yml
   rules:
     - changes:
         - ansible/**/*

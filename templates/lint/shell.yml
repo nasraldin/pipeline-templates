@@ -1,8 +1,19 @@
 .lint_shell:
   stage: lint
-  image: koalaman/shellcheck-alpine:stable
+  image:
+    name: koalaman/shellcheck-alpine:stable
+    entrypoint: [""]
   script:
-    - find scripts terraform/scripts ansible/scripts -name '*.sh' -print0 2>/dev/null | xargs -0 -r shellcheck
+    - |
+      set -eu
+      files=$(find scripts terraform/scripts ansible/scripts -name '*.sh' 2>/dev/null || true)
+      if [ -z "${files}" ]; then
+        echo "No shell scripts under scripts/, terraform/scripts/, or ansible/scripts/"
+        exit 0
+      fi
+      # Ignore sourced-file follow (SC1091) and treat info as non-fatal.
+      # shellcheck disable=SC2086
+      shellcheck -S warning -e SC1091 ${files}
   rules:
     - changes:
         - scripts/**/*

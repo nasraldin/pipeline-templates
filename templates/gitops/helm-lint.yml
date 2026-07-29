@@ -1,12 +1,18 @@
 .gitops_helm_lint:
   stage: lint
-  image: alpine/helm:3.17
+  # alpine/helm entrypoint is `helm`; clear it so we can run a shell script.
+  image:
+    name: alpine/helm:3.17
+    entrypoint: [""]
   script:
     - |
-      find platform -name 'apps.yaml' -o -name 'values.yaml' | while read -r f; do
-        echo "==> lint ${f}"
-        yamllint "${f}" || true
-      done
+      set -euo pipefail
+      apk add --no-cache python3 py3-yaml >/dev/null
+      find platform -type f \( -name 'apps.yaml' -o -name 'values.yaml' \) -print0 \
+        | while IFS= read -r -d '' f; do
+            echo "==> parse ${f}"
+            python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]))' "${f}"
+          done
   rules:
     - changes:
         - platform/**/*
