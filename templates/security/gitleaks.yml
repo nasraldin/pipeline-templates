@@ -11,8 +11,11 @@
     name: zricethezav/gitleaks:v8.24.3
     entrypoint: [""]
   variables:
-    # GitLab does not expand bash ${VAR:-default} in `variables:`; set a real default.
+    # GitLab does not expand bash ${VAR:-default} in `variables:`; set real defaults.
     GITLEAKS_EXIT_CODE: "1"
+    # Homelab default: scan the checked-out tree only. History still needs a
+    # one-time scrub/rotate after secrets were previously committed.
+    GITLEAKS_NO_GIT: "true"
   script:
     - |
       set -euo pipefail
@@ -23,11 +26,10 @@
       elif [ -f .gitleaks.toml ]; then
         EXTRA+=(--config .gitleaks.toml)
       fi
-      # Prefer full history when available (merge request / clone depth).
-      if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        gitleaks detect --source . --verbose --redact --exit-code "${EXIT_CODE}" "${EXTRA[@]}"
-      else
+      if [ "${GITLEAKS_NO_GIT:-true}" = "true" ] || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         gitleaks dir . --verbose --redact --exit-code "${EXIT_CODE}" "${EXTRA[@]}"
+      else
+        gitleaks detect --source . --verbose --redact --exit-code "${EXIT_CODE}" "${EXTRA[@]}"
       fi
   allow_failure: false
 

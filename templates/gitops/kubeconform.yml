@@ -1,14 +1,12 @@
 .gitops_kubeconform:
   stage: validate
-  # Alpine tag includes a shell; scratch kubeconform image cannot run GitLab script steps.
   image:
-    name: ghcr.io/yannh/kubeconform:v0.6.7-alpine
+    name: ghcr.io/yannh/kubeconform:v0.6.7
     entrypoint: [""]
   script:
     - |
-      set -eu
+      set -euo pipefail
       for dir in platform/*/; do
-        [ -d "${dir}" ] || continue
         comp=$(basename "${dir}")
         if [ -n "${GITOPS_COMPONENT:-}" ] && [ "${comp}" != "${GITOPS_COMPONENT}" ]; then
           continue

@@ -4,7 +4,6 @@
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
   variables:
-    # GitLab does not expand ${VAR:-default} in `variables:`; use literals and bash defaults in script.
     TRIVY_SEVERITY: "CRITICAL,HIGH"
     TRIVY_SCANNERS: "vuln,secret,misconfig"
     TRIVY_EXIT_CODE: "1"
@@ -13,15 +12,11 @@
     TRIVY_SCAN_PATH: "."
   script:
     - |
-      set -eu
-      EXIT_CODE="${TRIVY_EXIT_CODE:-1}"
-      SEVERITY="${TRIVY_SEVERITY:-CRITICAL,HIGH}"
-      SCANNERS="${TRIVY_SCANNERS:-vuln,secret,misconfig}"
-      SCAN_PATH="${TRIVY_SCAN_PATH:-.}"
-      trivy fs "${SCAN_PATH}" \
-        --exit-code "${EXIT_CODE}" \
-        --severity "${SEVERITY}" \
-        --scanners "${SCANNERS}" \
+      set -euo pipefail
+      trivy fs "${TRIVY_SCAN_PATH}" \
+        --exit-code "${TRIVY_EXIT_CODE:-1}" \
+        --severity "${TRIVY_SEVERITY}" \
+        --scanners "${TRIVY_SCANNERS}" \
         --format table
 
 security:trivy-fs-scan:
