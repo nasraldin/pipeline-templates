@@ -1,12 +1,15 @@
 .gitops_kubeconform:
   stage: validate
-  image:
-    name: ghcr.io/yannh/kubeconform:v0.6.7
-    entrypoint: [""]
+  # Runner prepare_script needs /bin/sh — use alpine and install kubeconform.
+  image: alpine:3.21
   script:
     - |
-      set -euo pipefail
+      set -eu
+      apk add --no-cache curl tar >/dev/null
+      curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz" \
+        | tar -xz -C /usr/local/bin kubeconform
       for dir in platform/*/; do
+        [ -d "${dir}" ] || continue
         comp=$(basename "${dir}")
         if [ -n "${GITOPS_COMPONENT:-}" ] && [ "${comp}" != "${GITOPS_COMPONENT}" ]; then
           continue
