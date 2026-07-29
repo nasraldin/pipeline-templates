@@ -78,7 +78,7 @@ stages:
 security:trivy-fs-scan:
   extends: .security_trivy_filesystem
   variables:
-    TRIVY_SCANNERS: "misconfig,secret"
+    TRIVY_SCANNERS: 'misconfig,secret'
 ```
 
 `lab-home-k8s` and `lab-home-gitops` include both Gitleaks and Trivy FS.
@@ -104,12 +104,12 @@ security:trivy-fs-scan:
 
 ## Pick only what you need
 
-| Repo type                | Include                                                                 |
-| ------------------------ | ----------------------------------------------------------------------- |
-| Harbor-only app          | gitleaks + harbor-build-push + trivy + syft + cosign                    |
-| GitLab registry app      | gitleaks + build + trivy + syft + optional container-scan + cosign      |
-| Terraform/Ansible/GitOps | gitleaks + trivy-filesystem                                             |
-| Report-only              | Set `TRIVY_EXIT_CODE=0` / `GITLEAKS_EXIT_CODE=0`                        |
+| Repo type                | Include                                                            |
+| ------------------------ | ------------------------------------------------------------------ |
+| Harbor-only app          | gitleaks + harbor-build-push + trivy + syft + cosign               |
+| GitLab registry app      | gitleaks + build + trivy + syft + optional container-scan + cosign |
+| Terraform/Ansible/GitOps | gitleaks + trivy-filesystem                                        |
+| Report-only              | Set `TRIVY_EXIT_CODE=0` / `GITLEAKS_EXIT_CODE=0`                   |
 
 ## Related
 
