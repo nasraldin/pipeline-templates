@@ -4,7 +4,6 @@
     name: cytopia/ansible:latest-tools
     entrypoint: [""]
   variables:
-    ANSIBLE_CHECK: "true"
     ANSIBLE_DIR: ansible
   script:
     - |
@@ -13,7 +12,9 @@
       # GitLab build dirs are world-writable; ansible ignores ansible.cfg there.
       export ANSIBLE_ROLES_PATH="${PWD}/roles"
       export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
-      bash scripts/ci-run.sh
+      # Default CI gate is syntax-only — live --check needs SSH keys + reachable guests.
+      PLAYBOOK="${ANSIBLE_PLAYBOOK:-playbooks/site.yml}"
+      ansible-playbook --syntax-check -i inventory/hosts.yml "${PLAYBOOK}"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - changes:
@@ -21,6 +22,25 @@
 
 ansible:check:
   extends: .ansible_check
+
+# Optional live dry-run against inventory (manual — needs CI SSH agent / reachable hosts).
+ansible:check:live:
+  extends: .ansible_check
+  variables:
+    ANSIBLE_CHECK: "true"
+  script:
+    - |
+      set -eu
+      cd "${ANSIBLE_DIR}"
+      export ANSIBLE_ROLES_PATH="${PWD}/roles"
+      export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
+      bash scripts/ci-run.sh
+  when: manual
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
 
 # Do not re-assign ANSIBLE_* from $ANSIBLE_* (circular → literal "$ANSIBLE_LIMIT").
 ansible:check:targeted:
