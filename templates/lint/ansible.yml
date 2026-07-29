@@ -18,6 +18,7 @@
   rules:
     - changes:
         - ansible/**/*
+        - .ansible-lint
 
 lint:ansible:
   extends: .lint_ansible
