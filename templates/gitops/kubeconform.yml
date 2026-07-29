@@ -14,8 +14,11 @@
         if [ -n "${GITOPS_COMPONENT:-}" ] && [ "${comp}" != "${GITOPS_COMPONENT}" ]; then
           continue
         fi
-        # Skip Helm value files (no kind/apiVersion).
-        find "${dir}" \( -name 'values.yaml' -o -name 'Chart.yaml' \) -prune -o -name '*.yaml' -print0 \
+        # Skip Helm values/Chart (no kind). Prefer ! -name — BusyBox find -prune is unreliable on files.
+        find "${dir}" -type f \( -name '*.yaml' -o -name '*.yml' \) \
+          ! -name 'values.yaml' ! -name 'values.yml' \
+          ! -name 'Chart.yaml' ! -name 'Chart.yml' \
+          -print0 \
           | xargs -0 -r kubeconform -summary -ignore-missing-schemas
       done
   rules:

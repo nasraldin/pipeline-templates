@@ -10,7 +10,7 @@
     - |
       set -eu
       cd "${ANSIBLE_DIR}"
-      # World-writable CI workspaces ignore ansible.cfg — pin roles path.
+      # GitLab build dirs are world-writable; ansible ignores ansible.cfg there.
       export ANSIBLE_ROLES_PATH="${PWD}/roles"
       export ANSIBLE_CONFIG="${PWD}/ansible.cfg"
       bash scripts/ci-run.sh
@@ -22,8 +22,8 @@
 ansible:check:
   extends: .ansible_check
 
+# Do not re-assign ANSIBLE_* from $ANSIBLE_* (circular → literal "$ANSIBLE_LIMIT").
 ansible:check:targeted:
   extends: .ansible_check
   rules:
-    # Require a real limit; ignore unexpanded "$ANSIBLE_LIMIT" from GitLab UI defaults.
     - if: $ANSIBLE_LIMIT != null && $ANSIBLE_LIMIT != "" && $ANSIBLE_LIMIT !~ /\$/
