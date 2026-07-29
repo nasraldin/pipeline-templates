@@ -6,6 +6,8 @@
   variables:
     TF_ACTION: plan
     TF_DIR: terraform
+  before_script:
+    - apk add --no-cache bash >/dev/null
   script:
     - cd "${TF_DIR}" && terraform init -input=false
     - bash ../pipeline-templates/scripts/ci-run-terraform.sh || bash scripts/ci-run.sh
@@ -27,4 +29,4 @@ terraform:plan:targeted:
   variables:
     TF_TARGET_GUESTS: $TF_TARGET_GUESTS
   rules:
-    - if: $TF_TARGET_GUESTS
+    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != ""

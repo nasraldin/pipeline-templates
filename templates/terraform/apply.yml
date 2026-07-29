@@ -7,6 +7,8 @@
     TF_ACTION: apply
     TF_AUTO_APPROVE: "true"
     TF_DIR: terraform
+  before_script:
+    - apk add --no-cache bash >/dev/null
   script:
     - cd "${TF_DIR}" && terraform init -input=false
     - bash scripts/ci-run.sh
@@ -23,4 +25,4 @@ terraform:apply:targeted:
   variables:
     TF_TARGET_GUESTS: $TF_TARGET_GUESTS
   rules:
-    - if: $TF_TARGET_GUESTS
+    - if: $TF_TARGET_GUESTS != null && $TF_TARGET_GUESTS != ""

@@ -11,10 +11,12 @@
     name: zricethezav/gitleaks:v8.24.3
     entrypoint: [""]
   variables:
-    GITLEAKS_EXIT_CODE: "${GITLEAKS_EXIT_CODE:-1}"
+    # GitLab does not expand bash ${VAR:-default} in `variables:`; set a real default.
+    GITLEAKS_EXIT_CODE: "1"
   script:
     - |
       set -euo pipefail
+      EXIT_CODE="${GITLEAKS_EXIT_CODE:-1}"
       EXTRA=()
       if [ -n "${GITLEAKS_CONFIG:-}" ] && [ -f "${GITLEAKS_CONFIG}" ]; then
         EXTRA+=(--config "${GITLEAKS_CONFIG}")
@@ -23,9 +25,9 @@
       fi
       # Prefer full history when available (merge request / clone depth).
       if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        gitleaks detect --source . --verbose --redact --exit-code "${GITLEAKS_EXIT_CODE}" "${EXTRA[@]}"
+        gitleaks detect --source . --verbose --redact --exit-code "${EXIT_CODE}" "${EXTRA[@]}"
       else
-        gitleaks dir . --verbose --redact --exit-code "${GITLEAKS_EXIT_CODE}" "${EXTRA[@]}"
+        gitleaks dir . --verbose --redact --exit-code "${EXIT_CODE}" "${EXTRA[@]}"
       fi
   allow_failure: false
 
