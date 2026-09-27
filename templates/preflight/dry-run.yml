@@ -5,7 +5,8 @@
   stage: preflight
   image: python:3.13-alpine
   variables:
-    GITLAB_API_URL: "${CI_API_V4_URL}"
+    # Runner must hit GitLab on LAN — public URL is behind Cloudflare (1010).
+    GITLAB_API_URL: "http://192.168.68.12/api/v4"
     GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
     GITLAB_REF: "${CI_COMMIT_REF_NAME}"
   script:
@@ -19,7 +20,7 @@
   stage: preflight
   image: python:3.13-alpine
   variables:
-    GITLAB_API_URL: "${CI_API_V4_URL}"
+    GITLAB_API_URL: "http://192.168.68.12/api/v4"
     GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
     GITLAB_REF: "${CI_COMMIT_REF_NAME}"
   script:

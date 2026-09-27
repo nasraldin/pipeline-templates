@@ -36,9 +36,10 @@ EXPECTED_DIR = Path(__file__).resolve().parent / "expected"
 
 
 def api_base() -> str:
+    # Prefer explicit GITLAB_API_URL (LAN) over CI_API_V4_URL (often Cloudflare).
     return (
-        os.environ.get("CI_API_V4_URL")
-        or os.environ.get("GITLAB_API_URL")
+        os.environ.get("GITLAB_API_URL")
+        or os.environ.get("CI_API_V4_URL")
         or "http://192.168.68.12/api/v4"
     ).rstrip("/")
 

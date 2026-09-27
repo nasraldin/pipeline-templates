@@ -28,7 +28,7 @@ run after preflight succeeds.
 
 ```bash
 export GITLAB_TOKEN=…          # Owner/Maintainer PAT with api scope
-export GITLAB_API_URL=http://192.168.68.12/api/v4
+export GITLAB_API_URL=http://192.168.68.12/api/v4  # LAN only (not CF public URL)
 export GITLAB_PROJECT_PATH=homelab/pipeline-templates
 export GITLAB_REF=main         # branch/tag only (raw SHAs are rejected)
 
