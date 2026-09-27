@@ -187,6 +187,24 @@
       "allow_failure": false
     },
     {
+      "name": "preflight:template: [gitops-helm-template]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [gitops-helm-dry-run]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [gitops-values-lint]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
       "name": "preflight:template: [gitops-kubeconform]",
       "stage": "preflight",
       "when": "on_success",
@@ -194,6 +212,18 @@
     },
     {
       "name": "preflight:template: [gitops-argocd-diff]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [terraform-init]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [terraform-validate]",
       "stage": "preflight",
       "when": "on_success",
       "allow_failure": false

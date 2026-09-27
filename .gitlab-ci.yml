@@ -58,8 +58,13 @@ preflight:template:
           - container-cosign-sign
           - container-scan-legacy
           - gitops-helm-lint
+          - gitops-helm-template
+          - gitops-helm-dry-run
+          - gitops-values-lint
           - gitops-kubeconform
           - gitops-argocd-diff
+          - terraform-init
+          - terraform-validate
           - terraform-plan
           - terraform-apply
           - terraform-destroy

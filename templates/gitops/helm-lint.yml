@@ -1,20 +1,59 @@
+# Helm lint — real `helm lint` for local charts (Chart.yaml).
+#
+# Variables:
+#   HELM_CHART_ROOT — root to search (default .)
+#   HELM_CHARTS — space-separated chart paths (skip discovery when set)
+#   HELM_LINT_ARGS — extra flags (e.g. --strict)
+#   HELM_REQUIRE_CHARTS — default "false"; fail when no charts found if "true"
+#   GITOPS_COMPONENT — when set, only lint platform/${GITOPS_COMPONENT} if it is a chart
+
 .gitops_helm_lint:
   stage: lint
-  # alpine/helm entrypoint is `helm`; clear it so we can run a shell script.
   image:
     name: alpine/helm:4.3
     entrypoint: [""]
+  variables:
+    HELM_CHART_ROOT: "."
+    HELM_CHARTS: ""
+    HELM_LINT_ARGS: ""
+    HELM_REQUIRE_CHARTS: "false"
   script:
     - |
       set -euo pipefail
-      apk add --no-cache python3 py3-yaml >/dev/null
-      find platform -type f \( -name 'apps.yaml' -o -name 'values.yaml' \) -print0 \
-        | while IFS= read -r -d '' f; do
-            echo "==> parse ${f}"
-            python3 -c 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "${f}"
-          done
+      charts=""
+      if [ -n "${HELM_CHARTS:-}" ]; then
+        charts="${HELM_CHARTS}"
+      elif [ -n "${GITOPS_COMPONENT:-}" ] && [ -f "platform/${GITOPS_COMPONENT}/Chart.yaml" ]; then
+        charts="platform/${GITOPS_COMPONENT}"
+      else
+        charts="$(find "${HELM_CHART_ROOT}" -type f \( -name Chart.yaml -o -name Chart.yml \) \
+          ! -path '*/.git/*' ! -path '*/node_modules/*' -print \
+          | sed 's|/Chart.ya*ml$||' | sort -u | tr '\n' ' ')"
+      fi
+      if [ -z "$(echo "${charts}" | tr -d '[:space:]')" ]; then
+        echo "No Helm charts (Chart.yaml) found under ${HELM_CHART_ROOT}"
+        if [ "${HELM_REQUIRE_CHARTS}" = "true" ]; then
+          exit 1
+        fi
+        exit 0
+      fi
+      fail=0
+      for chart in ${charts}; do
+        echo "==> helm lint ${chart}"
+        # shellcheck disable=SC2086
+        if ! helm lint ${HELM_LINT_ARGS} "${chart}"; then
+          fail=1
+        fi
+      done
+      exit "${fail}"
   rules:
     - changes:
+        - "**/Chart.yaml"
+        - "**/Chart.yml"
+        - "**/values.yaml"
+        - "**/values.yml"
+        - "**/templates/**/*"
+        - "**/charts/**/*"
         - platform/**/*
 
 gitops:helm-lint:

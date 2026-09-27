@@ -1,0 +1,34 @@
+# Terraform validate (after init). Prefer pairing with terraform:init artifacts.
+#
+# Variables:
+#   TF_DIR — default terraform
+#   TF_INIT_IF_MISSING — default "true" (run backend=false init when .terraform absent)
+
+.terraform_validate:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.16
+    entrypoint: [""]
+  variables:
+    TF_DIR: terraform
+    TF_INIT_IF_MISSING: "true"
+  script:
+    - |
+      set -euo pipefail
+      TF_ROOT="${CI_PROJECT_DIR:-.}/${TF_DIR}"
+      cd "${TF_ROOT}"
+      if [ ! -d .terraform ] && [ "${TF_INIT_IF_MISSING}" = "true" ]; then
+        terraform init -input=false -backend=false
+      fi
+      terraform validate
+  rules:
+    - changes:
+        - "${TF_DIR}/**/*"
+        - "**/*.tf"
+        - "**/*.tf.json"
+
+terraform:validate:
+  extends: .terraform_validate
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

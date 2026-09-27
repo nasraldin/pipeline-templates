@@ -6,7 +6,7 @@
     - |
       set -eu
       apk add --no-cache curl tar >/dev/null
-      curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz" \
+      curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz" \
         | tar -xz -C /usr/local/bin kubeconform
       for dir in platform/*/; do
         [ -d "${dir}" ] || continue

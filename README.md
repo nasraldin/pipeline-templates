@@ -30,32 +30,39 @@ Shared base: [`templates/common/node24.yml`](templates/common/node24.yml).
 
 ## Template catalog
 
-| Area      | Template                                   | Job / hidden                  | Docs                                                       |
-| --------- | ------------------------------------------ | ----------------------------- | ---------------------------------------------------------- |
-| Preflight | `templates/preflight/dry-run.yml`          | `preflight:template` (matrix) | [docs/templates/preflight.md](docs/templates/preflight.md) |
-| Lint      | `templates/lint/prettier.yml`              | `lint:prettier`               | [docs/templates/lint.md](docs/templates/lint.md)           |
-| Lint      | `templates/lint/eslint.yml`                | `lint:eslint`                 | same                                                       |
-| Lint      | `templates/lint/yaml.yml`                  | `lint:yaml`                   | same                                                       |
-| Lint      | `templates/lint/json.yml`                  | `lint:json`                   | same                                                       |
-| Lint      | `templates/lint/markdown.yml`              | `lint:markdown`               | same                                                       |
-| Lint      | `templates/lint/shell.yml`                 | `lint:shell`                  | same                                                       |
-| Lint      | `templates/lint/editorconfig.yml`          | `lint:editorconfig`           | same                                                       |
-| Lint      | `templates/lint/terraform.yml`             | `lint:terraform`              | same                                                       |
-| Lint      | `templates/lint/ansible.yml`               | `lint:ansible`                | same                                                       |
-| Node      | `templates/node/test.yml`                  | `node:test`                   | [docs/templates/node.md](docs/templates/node.md)           |
-| Node      | `templates/node/build.yml`                 | `node:build`                  | same                                                       |
-| Security  | `templates/security/gitleaks.yml`          | `security:gitleaks`           | [docs/templates/security.md](docs/templates/security.md)   |
-| Security  | `templates/security/osv-scanner.yml`       | `security:osv-scanner`        | same                                                       |
-| Security  | `templates/security/snyk.yml`              | `security:snyk`               | same                                                       |
-| Security  | `templates/security/trivy-filesystem.yml`  | `security:trivy-fs-scan`      | same                                                       |
-| Quality   | `templates/quality/sonarqube.yml`          | `quality:sonarqube`           | [docs/templates/quality.md](docs/templates/quality.md)     |
-| Container | `templates/container/build-push.yml`       | `container:build-push`        | [docs/templates/container.md](docs/templates/container.md) |
-| Container | `templates/container/trivy-image-scan.yml` | `container:trivy-image-scan`  | same                                                       |
-| Container | `templates/container/syft-sbom.yml`        | `container:syft-sbom`         | same                                                       |
-| Container | `templates/container/cosign-sign.yml`      | `container:cosign-sign`       | same                                                       |
-| IaC       | `templates/terraform/*.yml`                | plan/apply/destroy            | [docs/usage.md](docs/usage.md)                             |
-| IaC       | `templates/ansible/*.yml`                  | check/apply                   | same                                                       |
-| GitOps    | `templates/gitops/*.yml`                   | helm/kubeconform/argocd       | same                                                       |
+| Area      | Template                                   | Job / hidden                  | Docs                                                         |
+| --------- | ------------------------------------------ | ----------------------------- | ------------------------------------------------------------ |
+| Preflight | `templates/preflight/dry-run.yml`          | `preflight:template` (matrix) | [docs/templates/preflight.md](docs/templates/preflight.md)   |
+| Lint      | `templates/lint/prettier.yml`              | `lint:prettier`               | [docs/templates/lint.md](docs/templates/lint.md)             |
+| Lint      | `templates/lint/eslint.yml`                | `lint:eslint`                 | same                                                         |
+| Lint      | `templates/lint/yaml.yml`                  | `lint:yaml`                   | same                                                         |
+| Lint      | `templates/lint/json.yml`                  | `lint:json`                   | same                                                         |
+| Lint      | `templates/lint/markdown.yml`              | `lint:markdown`               | same                                                         |
+| Lint      | `templates/lint/shell.yml`                 | `lint:shell`                  | same                                                         |
+| Lint      | `templates/lint/editorconfig.yml`          | `lint:editorconfig`           | same                                                         |
+| Lint      | `templates/lint/terraform.yml`             | `lint:terraform`              | same                                                         |
+| Lint      | `templates/lint/ansible.yml`               | `lint:ansible`                | same                                                         |
+| Node      | `templates/node/test.yml`                  | `node:test`                   | [docs/templates/node.md](docs/templates/node.md)             |
+| Node      | `templates/node/build.yml`                 | `node:build`                  | same                                                         |
+| Security  | `templates/security/gitleaks.yml`          | `security:gitleaks`           | [docs/templates/security.md](docs/templates/security.md)     |
+| Security  | `templates/security/osv-scanner.yml`       | `security:osv-scanner`        | same                                                         |
+| Security  | `templates/security/snyk.yml`              | `security:snyk`               | same                                                         |
+| Security  | `templates/security/trivy-filesystem.yml`  | `security:trivy-fs-scan`      | same                                                         |
+| Quality   | `templates/quality/sonarqube.yml`          | `quality:sonarqube`           | [docs/templates/quality.md](docs/templates/quality.md)       |
+| Container | `templates/container/build-push.yml`       | `container:build-push`        | [docs/templates/container.md](docs/templates/container.md)   |
+| Container | `templates/container/trivy-image-scan.yml` | `container:trivy-image-scan`  | same                                                         |
+| Container | `templates/container/syft-sbom.yml`        | `container:syft-sbom`         | same                                                         |
+| Container | `templates/container/cosign-sign.yml`      | `container:cosign-sign`       | same                                                         |
+| IaC       | `templates/terraform/init.yml`             | `terraform:init`              | [docs/templates/iac-gitops.md](docs/templates/iac-gitops.md) |
+| IaC       | `templates/terraform/validate.yml`         | `terraform:validate`          | same                                                         |
+| IaC       | `templates/terraform/plan.yml`             | `terraform:plan`              | same                                                         |
+| IaC       | `templates/terraform/apply.yml`            | `terraform:apply`             | same                                                         |
+| IaC       | `templates/ansible/*.yml`                  | check/apply                   | [docs/usage.md](docs/usage.md)                               |
+| GitOps    | `templates/gitops/helm-lint.yml`           | `gitops:helm-lint`            | [docs/templates/iac-gitops.md](docs/templates/iac-gitops.md) |
+| GitOps    | `templates/gitops/helm-template.yml`       | `gitops:helm-template`        | same                                                         |
+| GitOps    | `templates/gitops/helm-dry-run.yml`        | `gitops:helm-dry-run`         | same                                                         |
+| GitOps    | `templates/gitops/values-lint.yml`         | `gitops:values-lint`          | same                                                         |
+| GitOps    | `templates/gitops/kubeconform.yml`         | `gitops:kubeconform`          | same                                                         |
 
 ## Multi-registry image push
 

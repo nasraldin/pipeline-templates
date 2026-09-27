@@ -1,0 +1,72 @@
+# Helm dry-run — `helm upgrade --install --dry-run` (client or server).
+#
+# Client dry-run needs no cluster (default). Server dry-run needs kubeconfig.
+#
+# Variables: same as helm-template.yml, plus:
+#   HELM_DRY_RUN_MODE — client (default) | server | none (Helm 3.13+ / 4.x)
+#   HELM_ATOMIC — default false
+#   KUBECONFIG / KUBE_CONTEXT — required for server mode
+
+.gitops_helm_dry_run:
+  stage: validate
+  image:
+    name: alpine/helm:4.3
+    entrypoint: [""]
+  variables:
+    HELM_CHART: ""
+    HELM_RELEASE_NAME: "release"
+    HELM_NAMESPACE: "default"
+    HELM_VALUES_FILES: ""
+    HELM_SET: ""
+    HELM_TEMPLATE_ARGS: ""
+    HELM_DRY_RUN_MODE: "client"
+    HELM_ATOMIC: "false"
+    HELM_REPO_URL: ""
+    HELM_REPO_NAME: "chartmuseum"
+  script:
+    - |
+      set -euo pipefail
+      if [ -z "${HELM_CHART:-}" ]; then
+        echo "HELM_CHART is required"
+        exit 1
+      fi
+      if [ -n "${HELM_REPO_URL:-}" ]; then
+        helm repo add "${HELM_REPO_NAME}" "${HELM_REPO_URL}"
+        helm repo update "${HELM_REPO_NAME}"
+      fi
+      VALUES_ARGS=()
+      for f in ${HELM_VALUES_FILES:-}; do
+        VALUES_ARGS+=(-f "${f}")
+      done
+      SET_ARGS=()
+      for kv in ${HELM_SET:-}; do
+        SET_ARGS+=(--set "${kv}")
+      done
+      ATOMIC_ARGS=()
+      if [ "${HELM_ATOMIC}" = "true" ]; then
+        ATOMIC_ARGS+=(--atomic)
+      fi
+      MODE="${HELM_DRY_RUN_MODE:-client}"
+      echo "==> helm upgrade --install --dry-run=${MODE} ${HELM_RELEASE_NAME} ${HELM_CHART}"
+      # shellcheck disable=SC2086
+      helm upgrade --install "${HELM_RELEASE_NAME}" "${HELM_CHART}" \
+        --namespace "${HELM_NAMESPACE}" \
+        --create-namespace \
+        --dry-run="${MODE}" \
+        "${VALUES_ARGS[@]}" \
+        "${SET_ARGS[@]}" \
+        "${ATOMIC_ARGS[@]}" \
+        ${HELM_TEMPLATE_ARGS}
+  rules:
+    - if: $HELM_CHART
+      changes:
+        - "**/Chart.yaml"
+        - "**/Chart.yml"
+        - "**/values.yaml"
+        - "**/values.yml"
+        - "**/templates/**/*"
+        - "**/charts/**/*"
+        - platform/**/*
+
+gitops:helm-dry-run:
+  extends: .gitops_helm_dry_run

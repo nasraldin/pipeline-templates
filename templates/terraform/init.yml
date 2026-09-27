@@ -1,0 +1,47 @@
+# Terraform init — prepare providers/modules (optionally with remote backend).
+#
+# Variables:
+#   TF_DIR — default terraform
+#   TF_INIT_ARGS — extra flags (e.g. -upgrade, -reconfigure)
+#   TF_BACKEND — default "true"; set "false" for -backend=false (no remote state)
+#
+# Artifacts: .terraform/ (+ lockfile) for downstream validate/plan jobs.
+
+.terraform_init:
+  stage: init
+  image:
+    name: hashicorp/terraform:1.16
+    entrypoint: [""]
+  variables:
+    TF_DIR: terraform
+    TF_INIT_ARGS: ""
+    TF_BACKEND: "true"
+  script:
+    - |
+      set -euo pipefail
+      TF_ROOT="${CI_PROJECT_DIR:-.}/${TF_DIR}"
+      cd "${TF_ROOT}"
+      BACKEND_FLAG=""
+      if [ "${TF_BACKEND}" = "false" ]; then
+        BACKEND_FLAG="-backend=false"
+      fi
+      # shellcheck disable=SC2086
+      terraform init -input=false ${BACKEND_FLAG} ${TF_INIT_ARGS}
+  artifacts:
+    paths:
+      - "${TF_DIR}/.terraform"
+      - "${TF_DIR}/.terraform.lock.hcl"
+    expire_in: 1 day
+    when: on_success
+  rules:
+    - changes:
+        - "${TF_DIR}/**/*"
+        - "**/*.tf"
+        - "**/*.tfvars"
+        - "**/*.tf.json"
+
+terraform:init:
+  extends: .terraform_init
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

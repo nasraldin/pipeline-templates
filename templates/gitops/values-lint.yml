@@ -1,0 +1,35 @@
+# Values / apps.yaml syntax check for Argo-style gitops (no local Chart.yaml).
+# Complements real helm lint/template when platform/*/ only has values + apps.
+
+.gitops_values_lint:
+  stage: lint
+  image: alpine:3.22
+  script:
+    - |
+      set -euo pipefail
+      apk add --no-cache python3 py3-yaml >/dev/null
+      roots="platform"
+      if [ -n "${GITOPS_COMPONENT:-}" ]; then
+        roots="platform/${GITOPS_COMPONENT}"
+      fi
+      fail=0
+      files="$(find ${roots} -type f \( -name 'apps.yaml' -o -name 'apps.yml' -o -name 'values.yaml' -o -name 'values.yml' \) 2>/dev/null | sort || true)"
+      if [ -z "${files}" ]; then
+        echo "No apps.yaml/values.yaml under ${roots}"
+        exit 0
+      fi
+      for f in ${files}; do
+        echo "==> parse ${f}"
+        if ! python3 -c 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "${f}"; then
+          echo "INVALID YAML: ${f}"
+          fail=1
+        fi
+      done
+      exit "${fail}"
+  rules:
+    - changes:
+        - platform/**/*
+        - clusters/**/*
+
+gitops:values-lint:
+  extends: .gitops_values_lint

@@ -1,0 +1,22 @@
+{
+  "id": "gitops-values-lint",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:gitops:values-lint may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".gitops_values_lint",
+    "gitops:values-lint"
+  ],
+  "jobs": [
+    {
+      "name": "gitops:values-lint",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

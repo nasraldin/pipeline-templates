@@ -1,0 +1,74 @@
+# Helm template — client-side render (no cluster). Good MR gate for manifests.
+#
+# Variables:
+#   HELM_CHART — required chart path or repo/oci ref (e.g. ./charts/app or oci://… )
+#   HELM_RELEASE_NAME — default release
+#   HELM_NAMESPACE — default default
+#   HELM_VALUES_FILES — space-separated -f files (optional)
+#   HELM_SET — space-separated --set key=value (optional)
+#   HELM_TEMPLATE_ARGS — extra flags
+#   HELM_OUTPUT_DIR — when set, write rendered YAML there (artifact)
+#   HELM_REPO_URL / HELM_REPO_NAME — optional helm repo add before template
+
+.gitops_helm_template:
+  stage: validate
+  image:
+    name: alpine/helm:4.3
+    entrypoint: [""]
+  variables:
+    HELM_CHART: ""
+    HELM_RELEASE_NAME: "release"
+    HELM_NAMESPACE: "default"
+    HELM_VALUES_FILES: ""
+    HELM_SET: ""
+    HELM_TEMPLATE_ARGS: ""
+    HELM_OUTPUT_DIR: "helm-rendered"
+    HELM_REPO_URL: ""
+    HELM_REPO_NAME: "chartmuseum"
+  script:
+    - |
+      set -euo pipefail
+      if [ -z "${HELM_CHART:-}" ]; then
+        echo "HELM_CHART is required (local path, chart/name, or oci://…)"
+        exit 1
+      fi
+      if [ -n "${HELM_REPO_URL:-}" ]; then
+        helm repo add "${HELM_REPO_NAME}" "${HELM_REPO_URL}"
+        helm repo update "${HELM_REPO_NAME}"
+      fi
+      VALUES_ARGS=()
+      for f in ${HELM_VALUES_FILES:-}; do
+        VALUES_ARGS+=(-f "${f}")
+      done
+      SET_ARGS=()
+      for kv in ${HELM_SET:-}; do
+        SET_ARGS+=(--set "${kv}")
+      done
+      mkdir -p "${HELM_OUTPUT_DIR}"
+      echo "==> helm template ${HELM_RELEASE_NAME} ${HELM_CHART}"
+      # shellcheck disable=SC2086
+      helm template "${HELM_RELEASE_NAME}" "${HELM_CHART}" \
+        --namespace "${HELM_NAMESPACE}" \
+        "${VALUES_ARGS[@]}" \
+        "${SET_ARGS[@]}" \
+        ${HELM_TEMPLATE_ARGS} \
+        > "${HELM_OUTPUT_DIR}/manifests.yaml"
+      echo "Rendered $(wc -l < "${HELM_OUTPUT_DIR}/manifests.yaml") lines → ${HELM_OUTPUT_DIR}/manifests.yaml"
+  artifacts:
+    paths:
+      - "${HELM_OUTPUT_DIR}/"
+    expire_in: 1 week
+    when: on_success
+  rules:
+    - if: $HELM_CHART
+      changes:
+        - "**/Chart.yaml"
+        - "**/Chart.yml"
+        - "**/values.yaml"
+        - "**/values.yml"
+        - "**/templates/**/*"
+        - "**/charts/**/*"
+        - platform/**/*
+
+gitops:helm-template:
+  extends: .gitops_helm_template
