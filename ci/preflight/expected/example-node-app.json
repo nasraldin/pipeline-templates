@@ -1,0 +1,68 @@
+{
+  "id": "example-node-app",
+  "kind": "example",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:lint:prettier may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:lint:eslint may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:node:test may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:node:build may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:security:gitleaks may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:security:osv-scanner may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".node24_base",
+    ".lint_prettier",
+    "lint:prettier",
+    ".lint_eslint",
+    "lint:eslint",
+    ".node_test",
+    "node:test",
+    ".node_build",
+    "node:build",
+    ".security_gitleaks",
+    "security:gitleaks",
+    ".security_osv_scanner",
+    "security:osv-scanner"
+  ],
+  "jobs": [
+    {
+      "name": "lint:prettier",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:eslint",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "node:test",
+      "stage": "test",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "node:build",
+      "stage": "build",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:gitleaks",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:osv-scanner",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

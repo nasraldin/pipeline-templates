@@ -1,0 +1,22 @@
+{
+  "id": "container-trivy-image",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:container:trivy-image-scan may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".container_trivy_image_scan",
+    "container:trivy-image-scan"
+  ],
+  "jobs": [
+    {
+      "name": "container:trivy-image-scan",
+      "stage": "scan",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

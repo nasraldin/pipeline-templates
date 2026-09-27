@@ -1,0 +1,31 @@
+# Hidden job — included by consumer pipelines for matrix dry-runs.
+# The repo root .gitlab-ci.yml wires preflight stage + parallel matrix.
+
+.preflight_template_dry_run:
+  stage: preflight
+  image: python:3.13-alpine
+  variables:
+    GITLAB_API_URL: "${CI_API_V4_URL}"
+    GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
+    GITLAB_REF: "${CI_COMMIT_REF_NAME}"
+  script:
+    - python3 ci/preflight/validate.py --id "${PREFLIGHT_ID}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH
+
+.preflight_root_and_examples:
+  stage: preflight
+  image: python:3.13-alpine
+  variables:
+    GITLAB_API_URL: "${CI_API_V4_URL}"
+    GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
+    GITLAB_REF: "${CI_COMMIT_REF_NAME}"
+  script:
+    - python3 ci/preflight/validate.py --root-only
+    - python3 ci/preflight/validate.py --examples-only
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH

@@ -1,0 +1,96 @@
+{
+  "id": "example-container",
+  "kind": "example",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:lint:yaml may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:security:gitleaks may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:build may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:trivy-image-scan may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:syft-sbom may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:container-scan may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:cosign-sign may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning",
+    "jobs:container:harbor-push may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    "container_scanning",
+    ".lint_yaml",
+    "lint:yaml",
+    ".security_gitleaks",
+    "security:gitleaks",
+    ".container_build_push",
+    "container:build-push",
+    ".container_build",
+    "container:build",
+    ".container_trivy_image_scan",
+    "container:trivy-image-scan",
+    ".container_syft_sbom",
+    "container:syft-sbom",
+    ".container_scan",
+    "container:container-scan",
+    ".container_cosign_sign",
+    "container:cosign-sign",
+    ".container_harbor_push",
+    "container:harbor-push"
+  ],
+  "jobs": [
+    {
+      "name": "lint:yaml",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:gitleaks",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "container:build",
+      "stage": "build",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "container_scanning",
+      "stage": "test",
+      "when": "on_success",
+      "allow_failure": true
+    },
+    {
+      "name": "container:trivy-image-scan",
+      "stage": "scan",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "container:syft-sbom",
+      "stage": "scan",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "container:container-scan",
+      "stage": "scan",
+      "when": "on_success",
+      "allow_failure": true
+    },
+    {
+      "name": "container:cosign-sign",
+      "stage": "publish",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "container:harbor-push",
+      "stage": "publish",
+      "when": "on_success",
+      "allow_failure": true
+    }
+  ],
+  "includes": [
+    "Jobs/Container-Scanning.gitlab-ci.yml"
+  ]
+}

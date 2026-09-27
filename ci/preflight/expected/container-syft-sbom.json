@@ -1,0 +1,22 @@
+{
+  "id": "container-syft-sbom",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:container:syft-sbom may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".container_syft_sbom",
+    "container:syft-sbom"
+  ],
+  "jobs": [
+    {
+      "name": "container:syft-sbom",
+      "stage": "scan",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

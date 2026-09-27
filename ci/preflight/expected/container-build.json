@@ -1,0 +1,24 @@
+{
+  "id": "container-build",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:container:build may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".container_build_push",
+    "container:build-push",
+    ".container_build",
+    "container:build"
+  ],
+  "jobs": [
+    {
+      "name": "container:build",
+      "stage": "build",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

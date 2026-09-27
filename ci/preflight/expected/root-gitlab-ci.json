@@ -1,0 +1,269 @@
+{
+  "id": "root-gitlab-ci",
+  "kind": "root",
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "merged_keys": [
+    ".lint_yaml",
+    "lint:yaml",
+    ".lint_shell",
+    "lint:shell",
+    ".node24_base",
+    ".lint_markdown",
+    "lint:markdown",
+    ".lint_json",
+    "lint:json",
+    ".lint_prettier",
+    "lint:prettier",
+    ".security_gitleaks",
+    "security:gitleaks",
+    ".preflight_template_dry_run",
+    ".preflight_root_and_examples",
+    "preflight:root-and-examples",
+    "preflight:template"
+  ],
+  "jobs": [
+    {
+      "name": "preflight:root-and-examples",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [common-node24]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-prettier]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-eslint]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-yaml]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-json]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-markdown]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-shell]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-editorconfig]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-terraform]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [lint-ansible]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [node-test]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [node-build]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [security-gitleaks]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [security-osv]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [security-snyk]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [security-trivy-fs]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [quality-sonarqube]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-build-push]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-build]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-harbor-build-push]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-harbor-push]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-trivy-image]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-syft-sbom]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-cosign-sign]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [container-scan-legacy]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [gitops-helm-lint]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [gitops-kubeconform]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [gitops-argocd-diff]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [terraform-plan]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [terraform-apply]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [terraform-destroy]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [ansible-check]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:template: [ansible-apply]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:yaml",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:shell",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:markdown",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:json",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "lint:prettier",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:gitleaks",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

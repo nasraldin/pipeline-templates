@@ -1,0 +1,22 @@
+{
+  "id": "lint-editorconfig",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:lint:editorconfig may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".lint_editorconfig",
+    "lint:editorconfig"
+  ],
+  "jobs": [
+    {
+      "name": "lint:editorconfig",
+      "stage": "lint",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

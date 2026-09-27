@@ -1,0 +1,22 @@
+{
+  "id": "security-snyk",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    "jobs:security:snyk may allow multiple pipelines to run for a single action due to `rules:when` clause with no `workflow:rules` - read more: https://docs.gitlab.com/ee/ci/jobs/job_troubleshooting.html#job-may-allow-multiple-pipelines-to-run-for-a-single-action-warning"
+  ],
+  "merged_keys": [
+    ".security_snyk",
+    "security:snyk"
+  ],
+  "jobs": [
+    {
+      "name": "security:snyk",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

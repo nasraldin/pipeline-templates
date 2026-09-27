@@ -15,6 +15,7 @@ Detailed per-area docs:
 
 | Doc                                              | Topic                                                       |
 | ------------------------------------------------ | ----------------------------------------------------------- |
+| [templates/preflight.md](templates/preflight.md) | CI Lint dry-run matrix + golden expected outputs            |
 | [templates/lint.md](templates/lint.md)           | Prettier, ESLint, YAML, JSON, Markdown, Shell, EditorConfig |
 | [templates/node.md](templates/node.md)           | pnpm test/build (Node 24)                                   |
 | [templates/security.md](templates/security.md)   | Gitleaks, OSV, Snyk, Trivy FS                               |

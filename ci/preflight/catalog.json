@@ -1,0 +1,553 @@
+{
+  "version": 1,
+  "description": "Dry-run catalog for every reusable CI template. Each entry builds a consumer fixture, runs GitLab CI Lint (dry_run + include_jobs), and asserts expected jobs/stages/script markers.",
+  "templates": [
+    {
+      "id": "common-node24",
+      "template": "templates/common/node24.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "preflight:node24",
+          "extends": ".node24_base",
+          "stage": "lint",
+          "script": ["pnpm -v"],
+          "script_contains": ["pnpm -v"]
+        }
+      ],
+      "expected_merged": [".node24_base", "preflight:node24"]
+    },
+    {
+      "id": "lint-prettier",
+      "template": "templates/lint/prettier.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:prettier",
+          "extends": ".lint_prettier",
+          "stage": "lint",
+          "script_contains": ["prettier@"]
+        }
+      ],
+      "expected_merged": [".node24_base", ".lint_prettier", "lint:prettier"]
+    },
+    {
+      "id": "lint-eslint",
+      "template": "templates/lint/eslint.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:eslint",
+          "extends": ".lint_eslint",
+          "stage": "lint",
+          "script_contains": ["pnpm install"]
+        }
+      ],
+      "expected_merged": [".node24_base", ".lint_eslint", "lint:eslint"]
+    },
+    {
+      "id": "lint-yaml",
+      "template": "templates/lint/yaml.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:yaml",
+          "extends": ".lint_yaml",
+          "stage": "lint",
+          "script_contains": ["yamllint"]
+        }
+      ],
+      "expected_merged": [".lint_yaml", "lint:yaml"]
+    },
+    {
+      "id": "lint-json",
+      "template": "templates/lint/json.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:json",
+          "extends": ".lint_json",
+          "stage": "lint",
+          "script_contains": ["jq"]
+        }
+      ],
+      "expected_merged": [".lint_json", "lint:json"]
+    },
+    {
+      "id": "lint-markdown",
+      "template": "templates/lint/markdown.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:markdown",
+          "extends": ".lint_markdown",
+          "stage": "lint",
+          "script_contains": ["markdownlint"]
+        }
+      ],
+      "expected_merged": [".node24_base", ".lint_markdown", "lint:markdown"]
+    },
+    {
+      "id": "lint-shell",
+      "template": "templates/lint/shell.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:shell",
+          "extends": ".lint_shell",
+          "stage": "lint",
+          "script_contains": ["shellcheck"]
+        }
+      ],
+      "expected_merged": [".lint_shell", "lint:shell"]
+    },
+    {
+      "id": "lint-editorconfig",
+      "template": "templates/lint/editorconfig.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:editorconfig",
+          "extends": ".lint_editorconfig",
+          "stage": "lint",
+          "script_contains": ["editorconfig-checker"]
+        }
+      ],
+      "expected_merged": [".lint_editorconfig", "lint:editorconfig"]
+    },
+    {
+      "id": "lint-terraform",
+      "template": "templates/lint/terraform.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:terraform",
+          "extends": ".lint_terraform",
+          "stage": "lint",
+          "script_contains": ["terraform fmt"]
+        }
+      ],
+      "expected_merged": [".lint_terraform", "lint:terraform"]
+    },
+    {
+      "id": "lint-ansible",
+      "template": "templates/lint/ansible.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "lint:ansible",
+          "extends": ".lint_ansible",
+          "stage": "lint",
+          "script_contains": ["ansible-lint"]
+        }
+      ],
+      "expected_merged": [".lint_ansible", "lint:ansible"]
+    },
+    {
+      "id": "node-test",
+      "template": "templates/node/test.yml",
+      "stages": ["test"],
+      "jobs": [
+        {
+          "name": "node:test",
+          "extends": ".node_test",
+          "stage": "test",
+          "script_contains": ["pnpm"]
+        }
+      ],
+      "expected_merged": [".node24_base", ".node_test", "node:test"]
+    },
+    {
+      "id": "node-build",
+      "template": "templates/node/build.yml",
+      "stages": ["build"],
+      "jobs": [
+        {
+          "name": "node:build",
+          "extends": ".node_build",
+          "stage": "build",
+          "script_contains": ["pnpm"]
+        }
+      ],
+      "expected_merged": [".node24_base", ".node_build", "node:build"]
+    },
+    {
+      "id": "security-gitleaks",
+      "template": "templates/security/gitleaks.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "security:gitleaks",
+          "extends": ".security_gitleaks",
+          "stage": "validate",
+          "script_contains": ["gitleaks"]
+        }
+      ],
+      "expected_merged": [".security_gitleaks", "security:gitleaks"]
+    },
+    {
+      "id": "security-osv",
+      "template": "templates/security/osv-scanner.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "security:osv-scanner",
+          "extends": ".security_osv_scanner",
+          "stage": "validate",
+          "script_contains": ["osv-scanner"]
+        }
+      ],
+      "expected_merged": [".security_osv_scanner", "security:osv-scanner"]
+    },
+    {
+      "id": "security-snyk",
+      "template": "templates/security/snyk.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "security:snyk",
+          "extends": ".security_snyk",
+          "stage": "validate",
+          "script_contains": ["snyk"]
+        }
+      ],
+      "expected_merged": [".security_snyk", "security:snyk"]
+    },
+    {
+      "id": "security-trivy-fs",
+      "template": "templates/security/trivy-filesystem.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "security:trivy-fs-scan",
+          "extends": ".security_trivy_filesystem",
+          "stage": "validate",
+          "script_contains": ["trivy"]
+        }
+      ],
+      "expected_merged": [".security_trivy_filesystem", "security:trivy-fs-scan"]
+    },
+    {
+      "id": "quality-sonarqube",
+      "template": "templates/quality/sonarqube.yml",
+      "stages": ["quality"],
+      "jobs": [
+        {
+          "name": "quality:sonarqube",
+          "extends": ".sonarqube_scan",
+          "stage": "quality",
+          "script_contains": ["sonar-scanner"]
+        }
+      ],
+      "expected_merged": [".sonarqube_scan", "quality:sonarqube"]
+    },
+    {
+      "id": "container-build-push",
+      "template": "templates/container/build-push.yml",
+      "stages": ["build"],
+      "jobs": [
+        {
+          "name": "container:build-push",
+          "extends": ".container_build_push",
+          "stage": "build",
+          "script_contains": ["docker build", "PUSH_REGISTRIES"]
+        }
+      ],
+      "expected_merged": [".container_build_push", "container:build-push"]
+    },
+    {
+      "id": "container-build",
+      "template": "templates/container/build.yml",
+      "stages": ["build"],
+      "jobs": [
+        {
+          "name": "container:build",
+          "extends": ".container_build",
+          "stage": "build",
+          "script_contains": ["docker build"]
+        }
+      ],
+      "expected_merged": [".container_build_push", ".container_build", "container:build"]
+    },
+    {
+      "id": "container-harbor-build-push",
+      "template": "templates/container/harbor-build-push.yml",
+      "stages": ["build"],
+      "jobs": [
+        {
+          "name": "container:harbor-build-push",
+          "extends": ".container_harbor_build_push",
+          "stage": "build",
+          "script_contains": ["docker"]
+        }
+      ],
+      "expected_merged": [".container_harbor_build_push", "container:harbor-build-push"]
+    },
+    {
+      "id": "container-harbor-push",
+      "template": "templates/container/harbor-push.yml",
+      "stages": ["publish"],
+      "jobs": [
+        {
+          "name": "container:harbor-push",
+          "extends": ".container_harbor_push",
+          "stage": "publish",
+          "script_contains": ["docker"]
+        }
+      ],
+      "expected_merged": [".container_harbor_push", "container:harbor-push"]
+    },
+    {
+      "id": "container-trivy-image",
+      "template": "templates/container/trivy-image-scan.yml",
+      "stages": ["scan"],
+      "jobs": [
+        {
+          "name": "container:trivy-image-scan",
+          "extends": ".container_trivy_image_scan",
+          "stage": "scan",
+          "script_contains": ["trivy"]
+        }
+      ],
+      "expected_merged": [".container_trivy_image_scan", "container:trivy-image-scan"]
+    },
+    {
+      "id": "container-syft-sbom",
+      "template": "templates/container/syft-sbom.yml",
+      "stages": ["scan"],
+      "jobs": [
+        {
+          "name": "container:syft-sbom",
+          "extends": ".container_syft_sbom",
+          "stage": "scan",
+          "script_contains": ["syft"]
+        }
+      ],
+      "expected_merged": [".container_syft_sbom", "container:syft-sbom"]
+    },
+    {
+      "id": "container-cosign-sign",
+      "template": "templates/container/cosign-sign.yml",
+      "stages": ["publish"],
+      "jobs": [
+        {
+          "name": "container:cosign-sign",
+          "extends": ".container_cosign_sign",
+          "stage": "publish",
+          "script_contains": ["cosign"]
+        }
+      ],
+      "expected_merged": [".container_cosign_sign", "container:cosign-sign"]
+    },
+    {
+      "id": "container-scan-legacy",
+      "template": "templates/container/container-scan.yml",
+      "stages": ["test", "scan"],
+      "jobs": [
+        {
+          "name": "container:container-scan",
+          "extends": ".container_scan",
+          "stage": "scan",
+          "script_contains": []
+        }
+      ],
+      "expected_merged": [".container_scan", "container:container-scan"]
+    },
+    {
+      "id": "gitops-helm-lint",
+      "template": "templates/gitops/helm-lint.yml",
+      "stages": ["lint"],
+      "jobs": [
+        {
+          "name": "gitops:helm-lint",
+          "extends": ".gitops_helm_lint",
+          "stage": "lint",
+          "script_contains": ["yaml.safe_load", "platform"]
+        }
+      ],
+      "expected_merged": [".gitops_helm_lint", "gitops:helm-lint"]
+    },
+    {
+      "id": "gitops-kubeconform",
+      "template": "templates/gitops/kubeconform.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "gitops:kubeconform",
+          "extends": ".gitops_kubeconform",
+          "stage": "validate",
+          "script_contains": ["kubeconform"]
+        }
+      ],
+      "expected_merged": [".gitops_kubeconform", "gitops:kubeconform"]
+    },
+    {
+      "id": "gitops-argocd-diff",
+      "template": "templates/gitops/argocd-diff.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "gitops:argocd-diff",
+          "extends": ".gitops_argocd_diff",
+          "stage": "validate",
+          "script_contains": ["argocd"]
+        }
+      ],
+      "expected_merged": [".gitops_argocd_diff", "gitops:argocd-diff"]
+    },
+    {
+      "id": "terraform-plan",
+      "template": "templates/terraform/plan.yml",
+      "stages": ["plan"],
+      "jobs": [
+        {
+          "name": "terraform:plan",
+          "extends": ".terraform_plan",
+          "stage": "plan",
+          "script_contains": ["terraform"]
+        }
+      ],
+      "expected_merged": [".terraform_plan", "terraform:plan", "terraform:plan:targeted"]
+    },
+    {
+      "id": "terraform-apply",
+      "template": "templates/terraform/apply.yml",
+      "stages": ["apply"],
+      "jobs": [
+        {
+          "name": "terraform:apply",
+          "extends": ".terraform_apply",
+          "stage": "apply",
+          "script_contains": ["terraform"]
+        }
+      ],
+      "expected_merged": [".terraform_apply", "terraform:apply", "terraform:apply:targeted"]
+    },
+    {
+      "id": "terraform-destroy",
+      "template": "templates/terraform/destroy.yml",
+      "stages": ["apply"],
+      "jobs": [
+        {
+          "name": "terraform:destroy:targeted",
+          "extends": ".terraform_destroy",
+          "stage": "apply",
+          "script_contains": ["terraform"]
+        }
+      ],
+      "expected_merged": [".terraform_destroy", "terraform:destroy:targeted"]
+    },
+    {
+      "id": "ansible-check",
+      "template": "templates/ansible/check.yml",
+      "stages": ["validate"],
+      "jobs": [
+        {
+          "name": "ansible:check",
+          "extends": ".ansible_check",
+          "stage": "validate",
+          "script_contains": ["ansible"]
+        }
+      ],
+      "expected_merged": [".ansible_check", "ansible:check", "ansible:check:targeted"]
+    },
+    {
+      "id": "ansible-apply",
+      "template": "templates/ansible/apply.yml",
+      "stages": ["apply"],
+      "jobs": [
+        {
+          "name": "ansible:apply",
+          "extends": ".ansible_apply",
+          "stage": "apply",
+          "script_contains": ["ansible"]
+        }
+      ],
+      "expected_merged": [".ansible_apply", "ansible:apply", "ansible:apply:targeted"]
+    }
+  ],
+  "examples": [
+    {
+      "id": "example-node-app",
+      "path": "examples/node-app.gitlab-ci.yml",
+      "rewrite_project_to_local": true,
+      "force_jobs": [
+        {"name": "lint:prettier", "extends": ".lint_prettier", "stage": "lint"},
+        {"name": "lint:eslint", "extends": ".lint_eslint", "stage": "lint"},
+        {"name": "node:test", "extends": ".node_test", "stage": "test"},
+        {"name": "node:build", "extends": ".node_build", "stage": "build"},
+        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
+        {"name": "security:osv-scanner", "extends": ".security_osv_scanner", "stage": "validate"}
+      ],
+      "expected_jobs": [
+        "lint:prettier",
+        "lint:eslint",
+        "node:test",
+        "node:build",
+        "security:gitleaks",
+        "security:osv-scanner"
+      ]
+    },
+    {
+      "id": "example-multi-registry",
+      "path": "examples/multi-registry.gitlab-ci.yml",
+      "rewrite_project_to_local": true,
+      "force_jobs": [
+        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
+        {"name": "container:build-push", "extends": ".container_build_push", "stage": "build"},
+        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
+        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"}
+      ],
+      "expected_jobs": [
+        "security:gitleaks",
+        "container:build-push",
+        "container:trivy-image-scan",
+        "container:syft-sbom"
+      ]
+    },
+    {
+      "id": "example-harbor-only",
+      "path": "examples/harbor-only-pipeline.gitlab-ci.yml",
+      "rewrite_project_to_local": true,
+      "force_jobs": [
+        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
+        {"name": "container:harbor-build-push", "extends": ".container_harbor_build_push", "stage": "build"},
+        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
+        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"},
+        {"name": "container:cosign-sign", "extends": ".container_cosign_sign", "stage": "publish"}
+      ],
+      "expected_jobs": [
+        "security:gitleaks",
+        "container:harbor-build-push",
+        "container:trivy-image-scan",
+        "container:syft-sbom",
+        "container:cosign-sign"
+      ]
+    },
+    {
+      "id": "example-container",
+      "path": "examples/container-pipeline.gitlab-ci.yml",
+      "rewrite_project_to_local": true,
+      "force_jobs": [
+        {"name": "lint:yaml", "extends": ".lint_yaml", "stage": "lint"},
+        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
+        {"name": "container:build", "extends": ".container_build", "stage": "build"},
+        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
+        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"},
+        {"name": "container:container-scan", "extends": ".container_scan", "stage": "scan"},
+        {"name": "container:cosign-sign", "extends": ".container_cosign_sign", "stage": "publish"},
+        {"name": "container:harbor-push", "extends": ".container_harbor_push", "stage": "publish"}
+      ],
+      "expected_jobs": [
+        "lint:yaml",
+        "security:gitleaks",
+        "container:build",
+        "container:trivy-image-scan",
+        "container:syft-sbom",
+        "container:container-scan",
+        "container:cosign-sign",
+        "container:harbor-push"
+      ]
+    }
+  ]
+}
