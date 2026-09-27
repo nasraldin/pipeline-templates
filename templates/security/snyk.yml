@@ -1,0 +1,47 @@
+# Snyk — SCA / optional code scan.
+# Requires CI variable SNYK_TOKEN (masked).
+#
+# Optional:
+#   SNYK_CMD — default: snyk test --severity-level=high
+#   SNYK_IMAGE — default snyk/snyk:node
+#   SNYK_FAIL — default "true" (fail job on findings)
+
+.security_snyk:
+  stage: validate
+  image:
+    name: "${SNYK_IMAGE}"
+    entrypoint: [""]
+  variables:
+    SNYK_IMAGE: "snyk/snyk:node"
+    SNYK_CMD: "snyk test --severity-level=high"
+    SNYK_FAIL: "true"
+  before_script:
+    - |
+      set -euo pipefail
+      if [ -z "${SNYK_TOKEN:-}" ]; then
+        echo "SNYK_TOKEN not set — skipping Snyk"
+        exit 0
+      fi
+      snyk auth "${SNYK_TOKEN}"
+  script:
+    - |
+      set -euo pipefail
+      if [ -z "${SNYK_TOKEN:-}" ]; then
+        exit 0
+      fi
+      set +e
+      eval "${SNYK_CMD}"
+      rc=$?
+      set -e
+      if [ "$rc" -ne 0 ] && [ "${SNYK_FAIL}" != "true" ]; then
+        echo "Snyk findings but SNYK_FAIL!=true — continuing"
+        exit 0
+      fi
+      exit "$rc"
+  rules:
+    - if: $SNYK_TOKEN
+      when: on_success
+    - when: never
+
+security:snyk:
+  extends: .security_snyk

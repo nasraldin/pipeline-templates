@@ -1,0 +1,48 @@
+# Node/pnpm build (Node 24).
+#
+# Requires package.json with a `build` script (or set NODE_BUILD_CMD).
+#
+# Optional:
+#   NODE_BUILD_CMD — default: pnpm run build
+#   NODE_BUILD_ARTIFACT_PATHS — space-separated paths to save as artifacts (e.g. "dist")
+
+include:
+  - local: templates/common/node24.yml
+
+.node_build:
+  extends: .node24_base
+  stage: build
+  variables:
+    NODE_BUILD_CMD: "pnpm run build"
+    PNPM_FROZEN: "true"
+    NODE_BUILD_ARTIFACT_PATHS: "dist"
+  script:
+    - |
+      set -euo pipefail
+      if [ ! -f package.json ]; then
+        echo "No package.json — skipping build"
+        exit 0
+      fi
+      if [ -f pnpm-lock.yaml ] && [ "${PNPM_FROZEN}" = "true" ]; then
+        pnpm install --frozen-lockfile
+      else
+        pnpm install
+      fi
+      eval "${NODE_BUILD_CMD}"
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 7 days
+    when: on_success
+  rules:
+    - changes:
+        - "package.json"
+        - "pnpm-lock.yaml"
+        - "pnpm-workspace.yaml"
+        - "**/*.{js,jsx,ts,tsx,mjs,cjs,css,scss,html,vue}"
+        - "tsconfig*.json"
+        - "vite.config.*"
+        - "next.config.*"
+
+node:build:
+  extends: .node_build

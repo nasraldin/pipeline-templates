@@ -1,12 +1,28 @@
+# Markdown lint (markdownlint-cli via pnpm dlx, Node 24).
+
+include:
+  - local: templates/common/node24.yml
+
 .lint_markdown:
+  extends: .node24_base
   stage: lint
-  image: node:22-alpine
+  variables:
+    MARKDOWNLINT_VERSION: "0.44.0"
+    MARKDOWNLINT_ARGS: ""
   script:
-    - npm install -g markdownlint-cli
-    - markdownlint '**/*.md' --ignore node_modules
+    - |
+      set -euo pipefail
+      EXTRA=()
+      if [ -f .markdownlint.json ] || [ -f .markdownlint.yaml ] || [ -f .markdownlint.yml ] ||
+         [ -f .markdownlint-cli2.jsonc ]; then
+        echo "Using repo markdownlint config"
+      fi
+      # shellcheck disable=SC2086
+      pnpm dlx "markdownlint-cli@${MARKDOWNLINT_VERSION}" ${MARKDOWNLINT_ARGS} '**/*.md' --ignore node_modules --ignore .git
   rules:
     - changes:
         - "**/*.md"
+        - ".markdownlint*"
 
 lint:markdown:
   extends: .lint_markdown

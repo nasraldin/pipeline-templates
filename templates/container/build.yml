@@ -1,20 +1,13 @@
+# Keep legacy job name; prefer templates/container/build-push.yml for multi-registry.
+# This wrapper pushes to GitLab registry only (PUSH_REGISTRIES=gitlab).
+
+include:
+  - local: templates/container/build-push.yml
+
 .container_build:
-  stage: build
-  image: docker:27
-  services:
-    - docker:27-dind
+  extends: .container_build_push
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-    CONTAINER_IMAGE: "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
-  before_script:
-    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
-  script:
-    - docker build -t "${CONTAINER_IMAGE}" .
-    - docker push "${CONTAINER_IMAGE}"
-  rules:
-    - if: $CI_REGISTRY_IMAGE
-      exists:
-        - Dockerfile
+    PUSH_REGISTRIES: "gitlab"
 
 container:build:
   extends: .container_build

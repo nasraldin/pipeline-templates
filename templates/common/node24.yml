@@ -1,0 +1,19 @@
+# Shared Node 24 + pnpm base (Corepack).
+# Extend this hidden job from Node lint/test/build templates.
+#
+# Override:
+#   NODE_IMAGE — default node:24-bookworm
+#   PNPM_VERSION — default 10
+
+.node24_base:
+  image: "${NODE_IMAGE}"
+  variables:
+    NODE_IMAGE: "node:24-bookworm"
+    PNPM_VERSION: "10"
+  before_script:
+    - |
+      set -euo pipefail
+      corepack enable
+      corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      node -v
+      pnpm -v

@@ -1,31 +1,48 @@
+# Trivy CVE scan on a built image.
+# Expects CONTAINER_IMAGE from dotenv (container:build-push) or set explicitly.
+#
+# Optional:
+#   TRIVY_SEVERITY — default CRITICAL,HIGH
+#   TRIVY_EXIT_CODE — default 1
+#   TRIVY_USERNAME / TRIVY_PASSWORD — registry auth (defaults to GitLab registry)
+
 .container_trivy_image_scan:
   stage: scan
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
   variables:
-    CONTAINER_IMAGE: "${CONTAINER_IMAGE:-$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA}"
-    TRIVY_SEVERITY: "${TRIVY_SEVERITY:-CRITICAL,HIGH}"
-    TRIVY_EXIT_CODE: "${TRIVY_EXIT_CODE:-1}"
+    TRIVY_SEVERITY: "CRITICAL,HIGH"
+    TRIVY_EXIT_CODE: "1"
     TRIVY_NO_PROGRESS: "true"
     TRIVY_DISABLE_VEX_NOTICE: "true"
-    TRIVY_USERNAME: "${CI_REGISTRY_USER}"
-    TRIVY_PASSWORD: "${CI_REGISTRY_PASSWORD}"
   script:
     - |
-      trivy image "${CONTAINER_IMAGE}" \
-        --username "${TRIVY_USERNAME}" \
-        --password "${TRIVY_PASSWORD}" \
+      set -euo pipefail
+      IMAGE="${CONTAINER_IMAGE:-${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}}"
+      USERNAME="${TRIVY_USERNAME:-${CI_REGISTRY_USER:-}}"
+      PASSWORD="${TRIVY_PASSWORD:-${CI_REGISTRY_PASSWORD:-}}"
+      EXTRA=()
+      if [ -n "${USERNAME}" ] && [ -n "${PASSWORD}" ]; then
+        EXTRA+=(--username "${USERNAME}" --password "${PASSWORD}")
+      fi
+      trivy image "${IMAGE}" \
+        "${EXTRA[@]}" \
         --exit-code "${TRIVY_EXIT_CODE}" \
         --severity "${TRIVY_SEVERITY}" \
         --format table
-  rules:
-    - if: $CI_REGISTRY_IMAGE
-      exists:
-        - Dockerfile
 
 container:trivy-image-scan:
   extends: .container_trivy_image_scan
   needs:
+    - job: container:build-push
+      optional: true
     - job: container:build
-      optional: false
+      optional: true
+    - job: container:harbor-build-push
+      optional: true
+  rules:
+    - exists:
+        - Dockerfile
+    - exists:
+        - "**/Dockerfile"

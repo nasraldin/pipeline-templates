@@ -1,0 +1,52 @@
+# OSV-Scanner — dependency vulnerability scan (lockfiles / SBOM / source).
+# https://google.github.io/osv-scanner/
+#
+# Optional:
+#   OSV_SCANNER_VERSION — image tag (default v2.0.1)
+#   OSV_ARGS — extra flags
+#   OSV_EXIT_CODE — default 1
+
+.security_osv_scanner:
+  stage: validate
+  image:
+    name: ghcr.io/google/osv-scanner:${OSV_SCANNER_VERSION}
+    entrypoint: [""]
+  variables:
+    OSV_SCANNER_VERSION: "v2.0.1"
+    OSV_ARGS: ""
+    OSV_EXIT_CODE: "1"
+  script:
+    - |
+      set -euo pipefail
+      # Prefer lockfiles / manifests at repo root; recurse when present.
+      set +e
+      # shellcheck disable=SC2086
+      osv-scanner scan source --recursive ${OSV_ARGS} .
+      rc=$?
+      set -e
+      if [ "$rc" -ne 0 ] && [ "${OSV_EXIT_CODE}" = "0" ]; then
+        echo "OSV findings present but OSV_EXIT_CODE=0 — continuing"
+        exit 0
+      fi
+      exit "$rc"
+  allow_failure: false
+  rules:
+    - changes:
+        - "**/package-lock.json"
+        - "**/pnpm-lock.yaml"
+        - "**/yarn.lock"
+        - "**/go.mod"
+        - "**/go.sum"
+        - "**/Cargo.lock"
+        - "**/poetry.lock"
+        - "**/Pipfile.lock"
+        - "**/requirements*.txt"
+        - "**/composer.lock"
+        - "**/Gemfile.lock"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: on_success
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+
+security:osv-scanner:
+  extends: .security_osv_scanner

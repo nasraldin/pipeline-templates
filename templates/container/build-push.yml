@@ -1,0 +1,108 @@
+# Build a container image and push to one or more registries.
+#
+# PUSH_REGISTRIES — comma-separated list (no spaces preferred):
+#   gitlab     → $CI_REGISTRY (GitLab registry)
+#   dockerhub  → docker.io (needs DOCKERHUB_USERNAME + DOCKERHUB_TOKEN)
+#   harbor     → $HARBOR_REGISTRY (needs HARBOR_USERNAME + HARBOR_PASSWORD + HARBOR_PROJECT)
+#   custom     → $CUSTOM_REGISTRY (needs CUSTOM_REGISTRY_USER + CUSTOM_REGISTRY_PASSWORD)
+#
+# Examples:
+#   PUSH_REGISTRIES: "gitlab"
+#   PUSH_REGISTRIES: "gitlab,dockerhub"
+#   PUSH_REGISTRIES: "gitlab,harbor,dockerhub"
+#
+# Image name/tag:
+#   IMAGE_NAME — default $CI_PROJECT_NAME
+#   IMAGE_TAG  — default $CI_COMMIT_SHORT_SHA
+#   CONTAINER_CONTEXT / CONTAINER_DOCKERFILE — build context (defaults . / Dockerfile)
+#
+# Per-registry image refs (optional overrides):
+#   GITLAB_IMAGE     — default $CI_REGISTRY_IMAGE:$IMAGE_TAG
+#   DOCKERHUB_IMAGE  — default docker.io/$DOCKERHUB_USERNAME/$IMAGE_NAME:$IMAGE_TAG
+#   HARBOR_IMAGE     — default $HARBOR_REGISTRY/$HARBOR_PROJECT/$IMAGE_NAME:$IMAGE_TAG
+#   CUSTOM_IMAGE     — default $CUSTOM_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+#
+# After push, exports dotenv CONTAINER_IMAGE (first pushed ref) for scan/sign jobs.
+
+.container_build_push:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_NAME: "${CI_PROJECT_NAME}"
+    IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+    CONTAINER_CONTEXT: "."
+    CONTAINER_DOCKERFILE: "Dockerfile"
+    PUSH_REGISTRIES: "gitlab"
+    HARBOR_REGISTRY: "harbor.nasraldin.com"
+  script:
+    - |
+      set -euo pipefail
+      LOCAL_TAG="${IMAGE_NAME}:${IMAGE_TAG}"
+      docker build -f "${CONTAINER_DOCKERFILE}" -t "${LOCAL_TAG}" "${CONTAINER_CONTEXT}"
+
+      FIRST=""
+      IFS=',' read -r -a REGS <<< "${PUSH_REGISTRIES}"
+      for raw in "${REGS[@]}"; do
+        reg="$(echo "$raw" | tr '[:upper:]' '[:lower:]' | xargs)"
+        [ -n "$reg" ] || continue
+        case "$reg" in
+          gitlab)
+            [ -n "${CI_REGISTRY:-}" ] || { echo "CI_REGISTRY unset"; exit 1; }
+            echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
+            DEST="${GITLAB_IMAGE:-${CI_REGISTRY_IMAGE}:${IMAGE_TAG}}"
+            ;;
+          dockerhub|docker.io)
+            [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ] || {
+              echo "DOCKERHUB_USERNAME/TOKEN required for dockerhub"
+              exit 1
+            }
+            echo "${DOCKERHUB_TOKEN}" | docker login docker.io -u "${DOCKERHUB_USERNAME}" --password-stdin
+            DEST="${DOCKERHUB_IMAGE:-docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}}"
+            ;;
+          harbor)
+            [ -n "${HARBOR_USERNAME:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ] && [ -n "${HARBOR_PROJECT:-}" ] || {
+              echo "HARBOR_USERNAME/PASSWORD/PROJECT required for harbor"
+              exit 1
+            }
+            echo "${HARBOR_PASSWORD}" | docker login "${HARBOR_REGISTRY}" -u "${HARBOR_USERNAME}" --password-stdin
+            DEST="${HARBOR_IMAGE:-${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}}"
+            ;;
+          custom)
+            [ -n "${CUSTOM_REGISTRY:-}" ] && [ -n "${CUSTOM_REGISTRY_USER:-}" ] && [ -n "${CUSTOM_REGISTRY_PASSWORD:-}" ] || {
+              echo "CUSTOM_REGISTRY{,_USER,_PASSWORD} required for custom"
+              exit 1
+            }
+            echo "${CUSTOM_REGISTRY_PASSWORD}" | docker login "${CUSTOM_REGISTRY}" -u "${CUSTOM_REGISTRY_USER}" --password-stdin
+            DEST="${CUSTOM_IMAGE:-${CUSTOM_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}}"
+            ;;
+          *)
+            echo "Unknown registry '${reg}' in PUSH_REGISTRIES"
+            exit 1
+            ;;
+        esac
+        echo "Pushing → ${DEST}"
+        docker tag "${LOCAL_TAG}" "${DEST}"
+        docker push "${DEST}"
+        if [ -z "${FIRST}" ]; then
+          FIRST="${DEST}"
+        fi
+      done
+      [ -n "${FIRST}" ] || { echo "No registries pushed"; exit 1; }
+      echo "CONTAINER_IMAGE=${FIRST}" > build.env
+      echo "Primary image for downstream jobs: ${FIRST}"
+  artifacts:
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $PUSH_REGISTRIES
+      exists:
+        - Dockerfile
+    - if: $PUSH_REGISTRIES
+      exists:
+        - "**/Dockerfile"
+
+container:build-push:
+  extends: .container_build_push

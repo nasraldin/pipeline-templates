@@ -1,24 +1,24 @@
+# ShellCheck for bash/sh scripts.
+
 .lint_shell:
   stage: lint
   image:
-    name: koalaman/shellcheck-alpine:stable
+    name: koalaman/shellcheck-alpine:v0.10.0
     entrypoint: [""]
   script:
     - |
       set -eu
-      files=$(find scripts terraform/scripts ansible/scripts -name '*.sh' 2>/dev/null || true)
-      if [ -z "${files}" ]; then
-        echo "No shell scripts under scripts/, terraform/scripts/, or ansible/scripts/"
+      files="$(find . -type f \( -name '*.sh' -o -name '*.bash' \) ! -path './.git/*' ! -path './node_modules/*' | sort)"
+      if [ -z "$files" ]; then
+        echo "No shell scripts"
         exit 0
       fi
-      # Ignore sourced-file follow (SC1091) and treat info as non-fatal.
       # shellcheck disable=SC2086
-      shellcheck -S warning -e SC1091 ${files}
+      shellcheck -x $files
   rules:
     - changes:
-        - scripts/**/*
-        - terraform/scripts/**/*
-        - ansible/scripts/**/*
+        - "**/*.sh"
+        - "**/*.bash"
 
 lint:shell:
   extends: .lint_shell

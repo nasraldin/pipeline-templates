@@ -1,7 +1,9 @@
+# YAML lint (yamllint). Prefer also including lint:prettier for formatting.
+
 .lint_yaml:
   stage: lint
   image:
-    name: pipelinecomponents/yamllint:latest
+    name: pipelinecomponents/yamllint:0.31.3
     entrypoint: [""]
   script:
     - |
@@ -11,12 +13,13 @@
       elif [ -f .yamllint.yml ]; then
         yamllint -c .yamllint.yml .
       else
-        # Relaxed defaults when a repo has not committed a config yet.
         yamllint -d '{extends: relaxed, rules: {line-length: {max: 200}}}' .
       fi
   rules:
     - changes:
         - "**/*.{yml,yaml}"
+        - ".yamllint.yaml"
+        - ".yamllint.yml"
 
 lint:yaml:
   extends: .lint_yaml

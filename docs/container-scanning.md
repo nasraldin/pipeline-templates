@@ -5,17 +5,18 @@ only what each repo needs.
 
 ## Templates
 
-| File                                        | Job                           | Stage    | Purpose                                               |
-| ------------------------------------------- | ----------------------------- | -------- | ----------------------------------------------------- |
-| `templates/security/gitleaks.yml`           | `security:gitleaks`           | validate | Secret leak scan (git tree / history)                 |
-| `templates/security/trivy-filesystem.yml`   | `security:trivy-fs-scan`      | validate | Repo/IaC scan (no Dockerfile required)                |
-| `templates/container/build.yml`             | `container:build`             | build    | Build and push to GitLab Container Registry           |
-| `templates/container/harbor-build-push.yml` | `container:harbor-build-push` | build    | Build and push directly to Harbor                     |
-| `templates/container/trivy-image-scan.yml`  | `container:trivy-image-scan`  | scan     | Trivy CVE gate on built image                         |
-| `templates/container/syft-sbom.yml`         | `container:syft-sbom`         | scan     | SBOM (SPDX JSON artifact)                             |
-| `templates/container/container-scan.yml`    | `container:container-scan`    | scan     | GitLab native container scanning (Security tab)       |
-| `templates/container/cosign-sign.yml`       | `container:cosign-sign`       | publish  | Cosign sign (key pair from CI / Infisical)            |
-| `templates/container/harbor-push.yml`       | `container:harbor-push`       | publish  | Retag/push GitLab registry image to Harbor (no build) |
+| File                                        | Job                           | Stage    | Purpose                                                  |
+| ------------------------------------------- | ----------------------------- | -------- | -------------------------------------------------------- |
+| `templates/security/gitleaks.yml`           | `security:gitleaks`           | validate | Secret leak scan (git tree / history)                    |
+| `templates/security/trivy-filesystem.yml`   | `security:trivy-fs-scan`      | validate | Repo/IaC scan (no Dockerfile required)                   |
+| `templates/container/build-push.yml`        | `container:build-push`        | build    | Build once; push to gitlab / dockerhub / harbor / custom |
+| `templates/container/build.yml`             | `container:build`             | build    | Legacy alias → GitLab registry only                      |
+| `templates/container/harbor-build-push.yml` | `container:harbor-build-push` | build    | Build and push directly to Harbor                        |
+| `templates/container/trivy-image-scan.yml`  | `container:trivy-image-scan`  | scan     | Trivy CVE gate on built image                            |
+| `templates/container/syft-sbom.yml`         | `container:syft-sbom`         | scan     | SBOM (SPDX JSON artifact)                                |
+| `templates/container/container-scan.yml`    | `container:container-scan`    | scan     | GitLab native container scanning (Security tab)          |
+| `templates/container/cosign-sign.yml`       | `container:cosign-sign`       | publish  | Cosign sign (key pair from CI / Infisical)               |
+| `templates/container/harbor-push.yml`       | `container:harbor-push`       | publish  | Retag/push GitLab registry image to Harbor (no build)    |
 
 ## App repo — recommended Harbor supply-chain flow
 

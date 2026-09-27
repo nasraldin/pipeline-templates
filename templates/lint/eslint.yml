@@ -1,0 +1,40 @@
+# ESLint for JavaScript / TypeScript projects (pnpm + Node 24).
+#
+# Requires package.json with an `lint` script, or set ESLINT_CMD.
+#
+# Optional variables:
+#   ESLINT_CMD — default: pnpm run lint
+#   PNPM_FROZEN — default "true" (use --frozen-lockfile when pnpm-lock.yaml exists)
+
+include:
+  - local: templates/common/node24.yml
+
+.lint_eslint:
+  extends: .node24_base
+  stage: lint
+  variables:
+    ESLINT_CMD: "pnpm run lint"
+    PNPM_FROZEN: "true"
+  script:
+    - |
+      set -euo pipefail
+      if [ ! -f package.json ]; then
+        echo "No package.json — skipping ESLint"
+        exit 0
+      fi
+      if [ -f pnpm-lock.yaml ] && [ "${PNPM_FROZEN}" = "true" ]; then
+        pnpm install --frozen-lockfile
+      else
+        pnpm install
+      fi
+      eval "${ESLINT_CMD}"
+  rules:
+    - changes:
+        - "package.json"
+        - "pnpm-lock.yaml"
+        - "**/*.{js,jsx,ts,tsx,mjs,cjs}"
+        - "eslint.config.*"
+        - ".eslintrc*"
+
+lint:eslint:
+  extends: .lint_eslint

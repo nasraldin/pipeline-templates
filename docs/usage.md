@@ -1,73 +1,45 @@
 # Pipeline template usage
 
-## lab-home-k8s
-
-```bash
-# Local (same as CI)
-cd terraform
-TF_ACTION=plan TF_TARGET_GUESTS=infra-01 ./scripts/ci-run.sh
-
-cd ../ansible
-ANSIBLE_PLAYBOOK=playbooks/infra.yml ANSIBLE_LIMIT=infra-01 ./scripts/ci-run.sh
-```
-
-## lab-home-gitops
-
-Push to `platform/keycloak/**` only → GitLab runs keycloak-scoped validate jobs
-(see `maps/lab-home-gitops-services.yml`).
-
-## App repos
-
-### Container image (gitleaks → build → scan → sign → publish)
+Include from GitLab project `homelab/pipeline-templates` (LAN:
+`http://192.168.68.12`).
 
 ```yaml
 include:
-  - project: homelab/pipeline-templates
+  - project: 'homelab/pipeline-templates'
     ref: main
     file:
-      - templates/security/gitleaks.yml
-      - templates/container/build.yml
-      - templates/container/trivy-image-scan.yml
-      - templates/container/syft-sbom.yml
-      - templates/container/cosign-sign.yml
-      - templates/container/harbor-push.yml
-
-stages:
-  - validate
-  - build
-  - scan
-  - publish
+      - /templates/lint/yaml.yml
 ```
 
-Set `HARBOR_PROJECT`, `HARBOR_USERNAME`, and `HARBOR_PASSWORD` for Harbor jobs.
-Set `COSIGN_PRIVATE_KEY` / `COSIGN_PASSWORD` for signing (Infisical `pipelines`/`cosign`).
-See [container-scanning.md](container-scanning.md).
+Detailed per-area docs:
 
-Harbor-only apps (no GitLab registry):
+| Doc                                              | Topic                                                       |
+| ------------------------------------------------ | ----------------------------------------------------------- |
+| [templates/lint.md](templates/lint.md)           | Prettier, ESLint, YAML, JSON, Markdown, Shell, EditorConfig |
+| [templates/node.md](templates/node.md)           | pnpm test/build (Node 24)                                   |
+| [templates/security.md](templates/security.md)   | Gitleaks, OSV, Snyk, Trivy FS                               |
+| [templates/quality.md](templates/quality.md)     | SonarQube                                                   |
+| [templates/container.md](templates/container.md) | Multi-registry build/push + scan                            |
+| [container-scanning.md](container-scanning.md)   | Legacy Harbor/Cosign notes                                  |
 
-```yaml
-include:
-  - project: homelab/pipeline-templates
-    ref: main
-    file:
-      - templates/security/gitleaks.yml
-      - templates/container/harbor-build-push.yml
-      - templates/container/trivy-image-scan.yml
-      - templates/container/syft-sbom.yml
-      - templates/container/cosign-sign.yml
-```
+## Selective Terraform / Ansible runs
 
-See [examples/harbor-only-pipeline.gitlab-ci.yml](../examples/harbor-only-pipeline.gitlab-ci.yml).
+| Variable           | Example               | Effect                                         |
+| ------------------ | --------------------- | ---------------------------------------------- |
+| `TF_TARGET_GUESTS` | `infra-01`            | Terraform `-target=module.vm["infra-01"]` only |
+| `ANSIBLE_PLAYBOOK` | `playbooks/infra.yml` | Single playbook                                |
+| `ANSIBLE_LIMIT`    | `docker-01`           | Single host                                    |
+| `GITOPS_COMPONENT` | `keycloak`            | Validate one platform directory                |
 
-### Quality gate only (no image)
+Automatic path detection: `scripts/detect-changed-services.sh` + `maps/*.yml`.
 
-```yaml
-include:
-  - project: homelab/pipeline-templates
-    ref: main
-    file:
-      - templates/lint/yaml.yml
-      - templates/quality/sonarqube.yml
-```
+## App repo (Node + container)
 
-Set `SONAR_HOST_URL` and `SONAR_TOKEN` in CI/CD variables.
+See [examples/node-app.gitlab-ci.yml](../examples/node-app.gitlab-ci.yml) and
+[examples/multi-registry.gitlab-ci.yml](../examples/multi-registry.gitlab-ci.yml).
+
+## Safety
+
+- Never filter `var.vms` for selective apply — use `-target` only.
+- `resource_group` serialises terraform/ansible apply jobs.
+- Destroy requires `TF_TARGET_GUESTS` unless `TF_ALLOW_FULL_DESTROY=true`.

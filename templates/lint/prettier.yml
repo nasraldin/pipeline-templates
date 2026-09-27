@@ -1,0 +1,40 @@
+# Prettier format check (YAML, JSON, Markdown, JS/TS, CSS, …).
+# Uses Node 24 + pnpm via Corepack. Does not require a project package.json.
+#
+# Optional variables:
+#   PRETTIER_VERSION — default 3
+#   PRETTIER_ARGS — extra CLI args
+#   PRETTIER_GLOB — default "." (repo root)
+
+include:
+  - local: templates/common/node24.yml
+
+.lint_prettier:
+  extends: .node24_base
+  stage: lint
+  variables:
+    PRETTIER_VERSION: "3"
+    PRETTIER_ARGS: ""
+    PRETTIER_GLOB: "."
+  script:
+    - |
+      set -euo pipefail
+      CFG=()
+      if [ -f .prettierrc ] || [ -f .prettierrc.js ] || [ -f .prettierrc.cjs ] ||
+         [ -f .prettierrc.json ] || [ -f .prettierrc.yml ] || [ -f .prettierrc.yaml ] ||
+         [ -f prettier.config.js ] || [ -f prettier.config.cjs ] || [ -f prettier.config.mjs ]; then
+        echo "Using repo Prettier config"
+      else
+        echo "No Prettier config found — using Prettier defaults"
+      fi
+      # shellcheck disable=SC2086
+      pnpm dlx "prettier@${PRETTIER_VERSION}" --check ${PRETTIER_ARGS} "${PRETTIER_GLOB}"
+  rules:
+    - changes:
+        - "**/*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,yml,yaml,md,mdx,css,scss,html,vue}"
+        - ".prettierrc"
+        - ".prettierrc.*"
+        - "prettier.config.*"
+
+lint:prettier:
+  extends: .lint_prettier

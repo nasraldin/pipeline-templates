@@ -1,0 +1,37 @@
+# Example: build once, push to GitLab + Harbor + Docker Hub
+
+include:
+  - project: "homelab/pipeline-templates"
+    ref: main
+    file:
+      - /templates/security/gitleaks.yml
+      - /templates/container/build-push.yml
+      - /templates/container/trivy-image-scan.yml
+      - /templates/container/syft-sbom.yml
+
+variables:
+  PUSH_REGISTRIES: "gitlab,harbor,dockerhub"
+  HARBOR_PROJECT: "library"
+  IMAGE_NAME: "myapp"
+  # Set in CI/CD variables (masked):
+  #   HARBOR_USERNAME, HARBOR_PASSWORD
+  #   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+
+stages:
+  - validate
+  - build
+  - scan
+
+security:gitleaks:
+  extends: .security_gitleaks
+
+container:build-push:
+  extends: .container_build_push
+
+container:trivy-image-scan:
+  extends: .container_trivy_image_scan
+  needs: ["container:build-push"]
+
+container:syft-sbom:
+  extends: .container_syft_sbom
+  needs: ["container:build-push"]

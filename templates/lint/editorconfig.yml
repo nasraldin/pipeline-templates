@@ -1,0 +1,46 @@
+# EditorConfig checker for plain text / mixed file types (.txt, .env.example, …).
+#
+# Optional:
+#   EDITORCONFIG_VERSION — default 3.0.1
+
+.lint_editorconfig:
+  stage: lint
+  image: alpine:3.20
+  variables:
+    EDITORCONFIG_VERSION: "3.0.1"
+  before_script:
+    - apk add --no-cache curl tar
+  script:
+    - |
+      set -euo pipefail
+      ARCH="$(uname -m)"
+      case "$ARCH" in
+        x86_64) A=amd64 ;;
+        aarch64) A=arm64 ;;
+        *) echo "unsupported arch $ARCH"; exit 1 ;;
+      esac
+      VER="${EDITORCONFIG_VERSION}"
+      URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${VER}/ec-linux-${A}.tar.gz"
+      curl -fsSL "$URL" | tar -xz -C /tmp
+      BIN="$(find /tmp -type f -name 'ec-linux-*' | head -1)"
+      chmod +x "$BIN"
+      if [ -f .editorconfig ]; then
+        "$BIN" -config .editorconfig
+      else
+        "$BIN"
+      fi
+  rules:
+    - changes:
+        - "**/*"
+        - ".editorconfig"
+      when: on_success
+    - when: never
+
+lint:editorconfig:
+  extends: .lint_editorconfig
+  # Narrow default rules for template repo consumers — override in project CI
+  rules:
+    - changes:
+        - "**/*.{txt,text,cfg,ini,toml,env,example}"
+        - ".editorconfig"
+        - "**/README*"
