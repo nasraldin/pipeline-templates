@@ -472,12 +472,12 @@
       "path": "examples/node-app.gitlab-ci.yml",
       "rewrite_project_to_local": true,
       "force_jobs": [
-        {"name": "lint:prettier", "extends": ".lint_prettier", "stage": "lint"},
-        {"name": "lint:eslint", "extends": ".lint_eslint", "stage": "lint"},
-        {"name": "node:test", "extends": ".node_test", "stage": "test"},
-        {"name": "node:build", "extends": ".node_build", "stage": "build"},
-        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
-        {"name": "security:osv-scanner", "extends": ".security_osv_scanner", "stage": "validate"}
+        { "name": "lint:prettier", "extends": ".lint_prettier", "stage": "lint" },
+        { "name": "lint:eslint", "extends": ".lint_eslint", "stage": "lint" },
+        { "name": "node:test", "extends": ".node_test", "stage": "test" },
+        { "name": "node:build", "extends": ".node_build", "stage": "build" },
+        { "name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate" },
+        { "name": "security:osv-scanner", "extends": ".security_osv_scanner", "stage": "validate" }
       ],
       "expected_jobs": [
         "lint:prettier",
@@ -493,10 +493,14 @@
       "path": "examples/multi-registry.gitlab-ci.yml",
       "rewrite_project_to_local": true,
       "force_jobs": [
-        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
-        {"name": "container:build-push", "extends": ".container_build_push", "stage": "build"},
-        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
-        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"}
+        { "name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate" },
+        { "name": "container:build-push", "extends": ".container_build_push", "stage": "build" },
+        {
+          "name": "container:trivy-image-scan",
+          "extends": ".container_trivy_image_scan",
+          "stage": "scan"
+        },
+        { "name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan" }
       ],
       "expected_jobs": [
         "security:gitleaks",
@@ -510,11 +514,19 @@
       "path": "examples/harbor-only-pipeline.gitlab-ci.yml",
       "rewrite_project_to_local": true,
       "force_jobs": [
-        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
-        {"name": "container:harbor-build-push", "extends": ".container_harbor_build_push", "stage": "build"},
-        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
-        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"},
-        {"name": "container:cosign-sign", "extends": ".container_cosign_sign", "stage": "publish"}
+        { "name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate" },
+        {
+          "name": "container:harbor-build-push",
+          "extends": ".container_harbor_build_push",
+          "stage": "build"
+        },
+        {
+          "name": "container:trivy-image-scan",
+          "extends": ".container_trivy_image_scan",
+          "stage": "scan"
+        },
+        { "name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan" },
+        { "name": "container:cosign-sign", "extends": ".container_cosign_sign", "stage": "publish" }
       ],
       "expected_jobs": [
         "security:gitleaks",
@@ -529,14 +541,22 @@
       "path": "examples/container-pipeline.gitlab-ci.yml",
       "rewrite_project_to_local": true,
       "force_jobs": [
-        {"name": "lint:yaml", "extends": ".lint_yaml", "stage": "lint"},
-        {"name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate"},
-        {"name": "container:build", "extends": ".container_build", "stage": "build"},
-        {"name": "container:trivy-image-scan", "extends": ".container_trivy_image_scan", "stage": "scan"},
-        {"name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan"},
-        {"name": "container:container-scan", "extends": ".container_scan", "stage": "scan"},
-        {"name": "container:cosign-sign", "extends": ".container_cosign_sign", "stage": "publish"},
-        {"name": "container:harbor-push", "extends": ".container_harbor_push", "stage": "publish"}
+        { "name": "lint:yaml", "extends": ".lint_yaml", "stage": "lint" },
+        { "name": "security:gitleaks", "extends": ".security_gitleaks", "stage": "validate" },
+        { "name": "container:build", "extends": ".container_build", "stage": "build" },
+        {
+          "name": "container:trivy-image-scan",
+          "extends": ".container_trivy_image_scan",
+          "stage": "scan"
+        },
+        { "name": "container:syft-sbom", "extends": ".container_syft_sbom", "stage": "scan" },
+        { "name": "container:container-scan", "extends": ".container_scan", "stage": "scan" },
+        {
+          "name": "container:cosign-sign",
+          "extends": ".container_cosign_sign",
+          "stage": "publish"
+        },
+        { "name": "container:harbor-push", "extends": ".container_harbor_push", "stage": "publish" }
       ],
       "expected_jobs": [
         "lint:yaml",
