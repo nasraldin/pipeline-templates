@@ -54,15 +54,17 @@ def project_id() -> str:
 
 
 def auth_headers() -> dict[str, str]:
+    # Prefer PAT for CI Lint — Job-Token often cannot call POST /ci/lint (404).
+    token = os.environ.get("GITLAB_TOKEN") or os.environ.get("PRIVATE_TOKEN")
+    if token:
+        return {"PRIVATE-TOKEN": token}
     job = os.environ.get("CI_JOB_TOKEN")
     if job:
         return {"JOB-TOKEN": job}
-    token = os.environ.get("GITLAB_TOKEN") or os.environ.get("PRIVATE_TOKEN")
-    if not token:
-        raise SystemExit(
-            "Missing CI_JOB_TOKEN or GITLAB_TOKEN for GitLab CI Lint API"
-        )
-    return {"PRIVATE-TOKEN": token}
+    raise SystemExit(
+        "Missing GITLAB_TOKEN (or CI_JOB_TOKEN) for GitLab CI Lint API"
+    )
+
 
 
 def lint_ref() -> str:

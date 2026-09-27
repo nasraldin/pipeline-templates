@@ -38,8 +38,10 @@ python3 ci/preflight/validate.py --examples-only
 python3 ci/preflight/validate.py --write-expected  # refresh goldens after intentional changes
 ```
 
-In GitLab CI the jobs use `CI_JOB_TOKEN` automatically. If Job-Token is denied
-for `POST /ci/lint`, set a masked `GITLAB_TOKEN` CI/CD variable on the project.
+In GitLab CI, set a masked **`GITLAB_TOKEN`** CI/CD variable (api scope) on
+`homelab/pipeline-templates`. Job-Token alone cannot call `POST /ci/lint`
+on this GitLab (returns 404). Preflight jobs call the **LAN** API
+(`http://192.168.68.12/api/v4`) to avoid Cloudflare blocking runners.
 
 ## After changing a template
 
