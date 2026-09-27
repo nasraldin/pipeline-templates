@@ -33,11 +33,11 @@ lint:prettier:
 
 **Variables:**
 
-| Variable           | Default   | Meaning                       |
-| ------------------ | --------- | ----------------------------- |
+| Variable           | Default   | Meaning                 |
+| ------------------ | --------- | ----------------------- |
 | `PRETTIER_VERSION` | `3.9.9`   | Prettier via `pnpm dlx` |
-| `PRETTIER_GLOB`    | `.`       | Path to check                 |
-| `PRETTIER_ARGS`    | _(empty)_ | Extra CLI flags               |
+| `PRETTIER_GLOB`    | `.`       | Path to check           |
+| `PRETTIER_ARGS`    | _(empty)_ | Extra CLI flags         |
 
 Commit a `.prettierrc.json` in the consumer (or rely on defaults).
 

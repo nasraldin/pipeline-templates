@@ -21,9 +21,9 @@ Paths are rooted at the templates project (`/templates/...`).
 
 ## Defaults (Node)
 
-| Item            | Value                                     |
-| --------------- | ----------------------------------------- |
-| Node            | **24** (LTS image `node:24-bookworm`)     |
+| Item            | Value                                         |
+| --------------- | --------------------------------------------- |
+| Node            | **24** (LTS image `node:24-bookworm`)         |
 | Package manager | **pnpm** via Corepack (`PNPM_VERSION=12.7.0`) |
 
 Shared base: [`templates/common/node24.yml`](templates/common/node24.yml).
