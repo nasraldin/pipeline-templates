@@ -3,7 +3,7 @@
 .lint_yaml:
   stage: lint
   image:
-    name: pipelinecomponents/yamllint:0.31.3
+    name: pipelinecomponents/yamllint:0.35.13
     entrypoint: [""]
   script:
     - |

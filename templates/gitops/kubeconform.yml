@@ -1,7 +1,7 @@
 .gitops_kubeconform:
   stage: validate
   # Runner prepare_script needs /bin/sh — use alpine and install kubeconform.
-  image: alpine:3.21
+  image: alpine:3.22
   script:
     - |
       set -eu

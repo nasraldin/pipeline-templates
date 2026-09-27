@@ -1,8 +1,8 @@
 .container_harbor_build_push:
   stage: build
-  image: docker:27
+  image: docker:28
   services:
-    - docker:27-dind
+    - docker:28-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
     HARBOR_REGISTRY: "${HARBOR_REGISTRY:-harbor.nasraldin.com}"

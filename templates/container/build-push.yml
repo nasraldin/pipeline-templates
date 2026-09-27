@@ -26,9 +26,9 @@
 
 .container_build_push:
   stage: build
-  image: docker:27
+  image: docker:28
   services:
-    - docker:27-dind
+    - docker:28-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
     IMAGE_NAME: "${CI_PROJECT_NAME}"

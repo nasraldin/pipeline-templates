@@ -44,7 +44,7 @@ security:osv-scanner:
 
 | Variable              | Default                       |
 | --------------------- | ----------------------------- |
-| `OSV_SCANNER_VERSION` | `v2.0.1`                      |
+| `OSV_SCANNER_VERSION` | `v2.6.0`                      |
 | `OSV_ARGS`            | _(empty)_                     |
 | `OSV_EXIT_CODE`       | `1` (set `0` for report-only) |
 

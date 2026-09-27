@@ -3,13 +3,13 @@
 #
 # Override:
 #   NODE_IMAGE — default node:24-bookworm
-#   PNPM_VERSION — default 10
+#   PNPM_VERSION — default 12.7.0
 
 .node24_base:
   image: "${NODE_IMAGE}"
   variables:
     NODE_IMAGE: "node:24-bookworm"
-    PNPM_VERSION: "10"
+    PNPM_VERSION: "12.7.0"
   before_script:
     - |
       set -euo pipefail

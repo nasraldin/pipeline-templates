@@ -2,7 +2,7 @@
 # Uses Node 24 + pnpm via Corepack. Does not require a project package.json.
 #
 # Optional variables:
-#   PRETTIER_VERSION — default 3
+#   PRETTIER_VERSION — default 3.9.9
 #   PRETTIER_ARGS — extra CLI args
 #   PRETTIER_GLOB — default "." (repo root)
 
@@ -13,7 +13,7 @@ include:
   extends: .node24_base
   stage: lint
   variables:
-    PRETTIER_VERSION: "3"
+    PRETTIER_VERSION: "3.9.9"
     PRETTIER_ARGS: ""
     PRETTIER_GLOB: "."
   script:

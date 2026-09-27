@@ -1,7 +1,7 @@
 .security_trivy_filesystem:
   stage: validate
   image:
-    name: aquasec/trivy:0.58.2
+    name: aquasec/trivy:0.74.0
     entrypoint: [""]
   variables:
     TRIVY_SEVERITY: "CRITICAL,HIGH"

@@ -1,7 +1,7 @@
 .lint_terraform:
   stage: lint
   image:
-    name: hashicorp/terraform:1.12
+    name: hashicorp/terraform:1.16
     entrypoint: [""]
   variables:
     TF_DIR: terraform

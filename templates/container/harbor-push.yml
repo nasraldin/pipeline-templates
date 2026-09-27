@@ -1,9 +1,9 @@
 .container_harbor_push:
   # Retag/push an image already in GitLab Container Registry — does not build.
   stage: publish
-  image: docker:27
+  image: docker:28
   services:
-    - docker:27-dind
+    - docker:28-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
     HARBOR_REGISTRY: "${HARBOR_REGISTRY:-harbor.nasraldin.com}"

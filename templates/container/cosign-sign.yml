@@ -13,7 +13,7 @@
 .container_cosign_sign:
   stage: publish
   image:
-    name: gcr.io/projectsigstore/cosign:v2.4.3
+    name: gcr.io/projectsigstore/cosign:v3.1.3
     entrypoint: [""]
   variables:
     COSIGN_YES: "true"

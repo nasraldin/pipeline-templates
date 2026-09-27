@@ -8,7 +8,7 @@ Override globally in the consumer:
 ```yaml
 variables:
   NODE_IMAGE: 'node:24-bookworm'
-  PNPM_VERSION: '10'
+  PNPM_VERSION: '12.7.0'
 ```
 
 ---
@@ -35,7 +35,7 @@ lint:prettier:
 
 | Variable           | Default   | Meaning                       |
 | ------------------ | --------- | ----------------------------- |
-| `PRETTIER_VERSION` | `3`       | Prettier major via `pnpm dlx` |
+| `PRETTIER_VERSION` | `3.9.9`   | Prettier via `pnpm dlx` |
 | `PRETTIER_GLOB`    | `.`       | Path to check                 |
 | `PRETTIER_ARGS`    | _(empty)_ | Extra CLI flags               |
 

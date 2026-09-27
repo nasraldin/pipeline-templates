@@ -2,7 +2,7 @@
   stage: lint
   # alpine/helm entrypoint is `helm`; clear it so we can run a shell script.
   image:
-    name: alpine/helm:3.17
+    name: alpine/helm:4.3
     entrypoint: [""]
   script:
     - |
