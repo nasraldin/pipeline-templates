@@ -1,20 +1,20 @@
-# Talos CI CLIs: talhelper, sops, talosctl (+ optional kubectl).
-# Version-keyed GitLab cache under .ci-tools/ — download only on miss / version bump.
+# Talos CI tool cache base — version-keyed GitLab cache under .ci-tools/
 #
-# Required project files:
+# Required in consumer repo:
 #   versions.env with TALOS_VERSION=vX.Y.Z
+#   scripts/ci-install-talos-tools.sh (and optionally ci-install-kubectl.sh)
 #
 # Variables (override in consumer):
-#   TALHELPER_VERSION, SOPS_VERSION, KUBECTL_VERSION
+#   TALHELPER_VERSION, SOPS_VERSION, KUBECTL_VERSION, TOOL_CACHE_PREFIX
 #
-# Usage (call from consumer before_script — !reference index form is flaky across includes):
-#   include: templates/talos/tools.yml
+# Usage:
+#   include:
+#     - project: homelab/pipeline-templates
+#       file: templates/talos/tools.yml
 #   talos:genconfig:
 #     extends: .talos_tools_base
 #     before_script:
-#       - bash scripts/ci-install-talos-tools.sh
-#
-# Or copy .install_talos_tools before_script body into the consumer script.
+#       - sh scripts/ci-install-talos-tools.sh
 
 include:
   - local: /templates/common/tool-cache.yml
@@ -27,68 +27,3 @@ variables:
 .talos_tools_base:
   extends: .tool_cache
   image: alpine:3.21
-
-.install_talos_tools:
-  before_script:
-    - |
-      set -euo pipefail
-      apk add --no-cache bash curl tar gzip bind-tools python3 >/dev/null
-      mkdir -p "${CI_PROJECT_DIR}/${CI_TOOLS_DIR:-.ci-tools}"
-      ARCH=amd64
-      case "$(uname -m)" in aarch64|arm64) ARCH=arm64 ;; esac
-      TALOS_VER="$(grep '^TALOS_VERSION=' versions.env | cut -d= -f2)"
-      test -n "${TALOS_VER}"
-
-      ensure_ci_bin() {
-        local name="$1" url="$2" mode="${3:-file}"
-        local dir="${CI_PROJECT_DIR}/${CI_TOOLS_DIR:-.ci-tools}"
-        local dest="${dir}/${name}"
-        mkdir -p "${dir}"
-        if [ -x "${dest}" ]; then
-          echo "cache hit: ${name}"
-        else
-          echo "cache miss: downloading ${name}"
-          if [ "${mode}" = "tgz" ]; then
-            curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
-              "${url}" | tar -xz -C "${dir}" "${name}"
-          else
-            curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
-              "${url}" -o "${dest}"
-          fi
-          chmod +x "${dest}"
-        fi
-        ln -sf "${dest}" "/usr/local/bin/${name}"
-      }
-
-      ensure_ci_bin talhelper \
-        "https://github.com/budimanjojo/talhelper/releases/download/${TALHELPER_VERSION}/talhelper_linux_${ARCH}.tar.gz" \
-        tgz
-      ensure_ci_bin sops \
-        "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.${ARCH}"
-      ensure_ci_bin talosctl \
-        "https://github.com/siderolabs/talos/releases/download/${TALOS_VER}/talosctl-linux-${ARCH}"
-      chmod +x scripts/*.sh
-
-.install_kubectl:
-  before_script:
-    - |
-      set -euo pipefail
-      ARCH=amd64
-      case "$(uname -m)" in aarch64|arm64) ARCH=arm64 ;; esac
-      KVER="${KUBECTL_VERSION:-}"
-      if [ -z "${KVER}" ]; then
-        echo "KUBECTL_VERSION must be pinned (do not hit dl.k8s.io/stable.txt every run)" >&2
-        exit 1
-      fi
-      dir="${CI_PROJECT_DIR}/${CI_TOOLS_DIR:-.ci-tools}"
-      dest="${dir}/kubectl-${KVER}"
-      mkdir -p "${dir}"
-      if [ -x "${dest}" ]; then
-        echo "cache hit: kubectl ${KVER}"
-      else
-        echo "cache miss: downloading kubectl ${KVER}"
-        curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
-          "https://dl.k8s.io/release/${KVER}/bin/linux/${ARCH}/kubectl" -o "${dest}"
-        chmod +x "${dest}"
-      fi
-      ln -sf "${dest}" /usr/local/bin/kubectl

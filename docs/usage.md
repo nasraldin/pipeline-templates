@@ -18,12 +18,13 @@ version-keyed GitLab cache under `.ci-tools/`:
 
 | Template | What |
 | -------- | ---- |
-| `templates/common/tool-cache.yml` | Shared `.tool_cache` + `ensure_ci_bin` pattern |
-| `templates/talos/tools.yml` | `talhelper` / `sops` / `talosctl` / `kubectl` |
+| `templates/common/tool-cache.yml` | Shared `.tool_cache` (`.ci-tools/` paths + version key) |
+| `templates/talos/tools.yml` | `.talos_tools_base` — extend + install via consumer scripts |
 
 Cache key changes when `versions.env` or version variables change → download
-once, then **cache hit** only. Curls use `--connect-timeout 15 --max-time 180`
-so hung mirrors fail fast instead of silent 10+ minute waits.
+once, then **cache hit** only. Consumer install scripts should use
+`--connect-timeout` / `--max-time 600` with resume so large assets (e.g.
+talosctl) can finish from slow mirrors.
 
 Detailed per-area docs:
 
