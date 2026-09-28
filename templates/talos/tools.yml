@@ -7,12 +7,14 @@
 # Variables (override in consumer):
 #   TALHELPER_VERSION, SOPS_VERSION, KUBECTL_VERSION
 #
-# Usage (anchors do NOT cross include files — use !reference):
+# Usage (call from consumer before_script — !reference index form is flaky across includes):
 #   include: templates/talos/tools.yml
 #   talos:genconfig:
 #     extends: .talos_tools_base
 #     before_script:
-#       - !reference [.install_talos_tools, before_script, 0]
+#       - bash scripts/ci-install-talos-tools.sh
+#
+# Or copy .install_talos_tools before_script body into the consumer script.
 
 include:
   - local: /templates/common/tool-cache.yml
