@@ -8,6 +8,13 @@
   image: alpine:3.22
   variables:
     EDITORCONFIG_VERSION: "4.0.2"
+    CI_TOOLS_DIR: ".ci-tools"
+  cache:
+    key: "editorconfig-checker-${EDITORCONFIG_VERSION}"
+    paths:
+      - .ci-tools/
+    policy: pull-push
+    when: on_success
   before_script:
     - apk add --no-cache curl tar
   script:
@@ -20,10 +27,20 @@
         *) echo "unsupported arch $ARCH"; exit 1 ;;
       esac
       VER="${EDITORCONFIG_VERSION}"
-      URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${VER}/editorconfig-checker-linux-${A}.tar.gz"
-      curl -fsSL "$URL" | tar -xz -C /tmp
-      BIN="$(find /tmp -type f -name 'editorconfig-checker' | head -1)"
-      chmod +x "$BIN"
+      TOOLS="${CI_PROJECT_DIR}/${CI_TOOLS_DIR}"
+      mkdir -p "${TOOLS}"
+      BIN="${TOOLS}/editorconfig-checker"
+      if [ -x "${BIN}" ]; then
+        echo "cache hit: editorconfig-checker"
+      else
+        echo "cache miss: downloading editorconfig-checker v${VER}"
+        URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${VER}/editorconfig-checker-linux-${A}.tar.gz"
+        curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+          "$URL" | tar -xz -C /tmp
+        FOUND="$(find /tmp -type f -name 'editorconfig-checker' | head -1)"
+        cp "${FOUND}" "${BIN}"
+        chmod +x "${BIN}"
+      fi
       if [ -f .editorconfig ]; then
         "$BIN" -config .editorconfig
       else

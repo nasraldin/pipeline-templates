@@ -11,6 +11,20 @@ include:
       - /templates/lint/yaml.yml
 ```
 
+## Tool download cache
+
+CLI binaries must not be re-fetched from GitHub on every job. Use
+version-keyed GitLab cache under `.ci-tools/`:
+
+| Template | What |
+| -------- | ---- |
+| `templates/common/tool-cache.yml` | Shared `.tool_cache` + `ensure_ci_bin` pattern |
+| `templates/talos/tools.yml` | `talhelper` / `sops` / `talosctl` / `kubectl` |
+
+Cache key changes when `versions.env` or version variables change → download
+once, then **cache hit** only. Curls use `--connect-timeout 15 --max-time 180`
+so hung mirrors fail fast instead of silent 10+ minute waits.
+
 Detailed per-area docs:
 
 | Doc                                                | Topic                                                       |

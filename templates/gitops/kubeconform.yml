@@ -2,12 +2,31 @@
   stage: validate
   # Runner prepare_script needs /bin/sh — use alpine and install kubeconform.
   image: alpine:3.22
+  variables:
+    KUBECONFORM_VERSION: "v0.8.0"
+    CI_TOOLS_DIR: ".ci-tools"
+  cache:
+    key: "kubeconform-${KUBECONFORM_VERSION}"
+    paths:
+      - .ci-tools/
+    policy: pull-push
+    when: on_success
   script:
     - |
       set -eu
       apk add --no-cache curl tar >/dev/null
-      curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz" \
-        | tar -xz -C /usr/local/bin kubeconform
+      TOOLS="${CI_PROJECT_DIR}/${CI_TOOLS_DIR}"
+      mkdir -p "${TOOLS}"
+      if [ -x "${TOOLS}/kubeconform" ]; then
+        echo "cache hit: kubeconform"
+      else
+        echo "cache miss: downloading kubeconform ${KUBECONFORM_VERSION}"
+        curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+          "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+          | tar -xz -C "${TOOLS}" kubeconform
+        chmod +x "${TOOLS}/kubeconform"
+      fi
+      ln -sf "${TOOLS}/kubeconform" /usr/local/bin/kubeconform
       for dir in platform/*/; do
         [ -d "${dir}" ] || continue
         comp=$(basename "${dir}")

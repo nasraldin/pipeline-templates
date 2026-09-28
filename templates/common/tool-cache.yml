@@ -1,0 +1,29 @@
+# Shared version-keyed cache for CLI binaries downloaded in CI.
+#
+# Layout: ${CI_PROJECT_DIR}/.ci-tools/<name>
+# Cache key changes when versions.env and/or TOOL_CACHE_PREFIX change → re-download.
+# On hit: install is ln only (no GitHub).
+#
+# Consumers:
+#   include: templates/common/tool-cache.yml
+#   myjob:
+#     extends: .tool_cache
+#     # download into .ci-tools/ on miss; see templates/talos/tools.yml for pattern
+
+variables:
+  CI_TOOLS_DIR: ".ci-tools"
+  # Override per project so different toolsets do not collide on the runner cache.
+  TOOL_CACHE_PREFIX: "bins"
+
+.tool_cache:
+  variables:
+    CI_TOOLS_DIR: ".ci-tools"
+  cache:
+    key:
+      files:
+        - versions.env
+      prefix: "${TOOL_CACHE_PREFIX}"
+    paths:
+      - .ci-tools/
+    policy: pull-push
+    when: on_success
