@@ -35,7 +35,7 @@
       else
         echo "cache miss: downloading editorconfig-checker v${VER}"
         URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${VER}/editorconfig-checker-linux-${A}.tar.gz"
-        curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+        curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
           "$URL" | tar -xz -C /tmp
         FOUND="$(find /tmp -type f -name 'editorconfig-checker' | head -1)"
         cp "${FOUND}" "${BIN}"

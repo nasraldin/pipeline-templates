@@ -49,10 +49,10 @@ variables:
         else
           echo "cache miss: downloading ${name}"
           if [ "${mode}" = "tgz" ]; then
-            curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+            curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
               "${url}" | tar -xz -C "${dir}" "${name}"
           else
-            curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+            curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
               "${url}" -o "${dest}"
           fi
           chmod +x "${dest}"
@@ -87,7 +87,7 @@ variables:
         echo "cache hit: kubectl ${KVER}"
       else
         echo "cache miss: downloading kubectl ${KVER}"
-        curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+        curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
           "https://dl.k8s.io/release/${KVER}/bin/linux/${ARCH}/kubectl" -o "${dest}"
         chmod +x "${dest}"
       fi

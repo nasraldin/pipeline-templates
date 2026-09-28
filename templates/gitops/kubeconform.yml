@@ -21,7 +21,7 @@
         echo "cache hit: kubeconform"
       else
         echo "cache miss: downloading kubeconform ${KUBECONFORM_VERSION}"
-        curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 \
+        curl -fsSL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
           "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
           | tar -xz -C "${TOOLS}" kubeconform
         chmod +x "${TOOLS}/kubeconform"
