@@ -63,6 +63,8 @@ Shared base: [`templates/common/node24.yml`](templates/common/node24.yml).
 | GitOps    | `templates/gitops/helm-dry-run.yml`        | `gitops:helm-dry-run`         | same                                                         |
 | GitOps    | `templates/gitops/values-lint.yml`         | `gitops:values-lint`          | same                                                         |
 | GitOps    | `templates/gitops/kubeconform.yml`         | `gitops:kubeconform`          | same                                                         |
+| Common    | `templates/common/tool-cache.yml`          | `.tool_cache`                 | [docs/templates/tool-cache.md](docs/templates/tool-cache.md) |
+| Talos     | `templates/talos/tools.yml`                | `.talos_tools_base`           | same                                                         |
 
 ## Multi-registry image push
 

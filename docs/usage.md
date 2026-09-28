@@ -16,10 +16,10 @@ include:
 CLI binaries must not be re-fetched from GitHub on every job. Use
 version-keyed GitLab cache under `.ci-tools/`:
 
-| Template | What |
-| -------- | ---- |
-| `templates/common/tool-cache.yml` | Shared `.tool_cache` (`.ci-tools/` paths + version key) |
-| `templates/talos/tools.yml` | `.talos_tools_base` — extend + install via consumer scripts |
+| Template                          | What                                                        |
+| --------------------------------- | ----------------------------------------------------------- |
+| `templates/common/tool-cache.yml` | Shared `.tool_cache` (`.ci-tools/` paths + version key)     |
+| `templates/talos/tools.yml`       | `.talos_tools_base` — extend + install via consumer scripts |
 
 Cache key changes when `versions.env` or version variables change → download
 once, then **cache hit** only. Consumer install scripts should use
@@ -37,6 +37,7 @@ Detailed per-area docs:
 | [templates/security.md](templates/security.md)     | Gitleaks, OSV, Snyk, Trivy FS                               |
 | [templates/quality.md](templates/quality.md)       | SonarQube                                                   |
 | [templates/container.md](templates/container.md)   | Multi-registry build/push + scan                            |
+| [templates/tool-cache.md](templates/tool-cache.md) | Version-keyed `.ci-tools/` CLI cache (Talos + common)       |
 | [container-scanning.md](container-scanning.md)     | Legacy Harbor/Cosign notes                                  |
 
 ## Selective Terraform / Ansible runs
