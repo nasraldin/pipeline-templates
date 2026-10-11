@@ -1,0 +1,19 @@
+changeset-version:
+  extends: .node
+  stage: publish
+  rules:
+    - if: $RUN_RELEASE_VERSION == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+      when: manual
+    - when: never
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm changeset version
+    - git diff --stat
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - .changeset/
+      - "**/package.json"
+      - "**/CHANGELOG.md"
+      - pnpm-lock.yaml
+  resource_group: ajrly-release

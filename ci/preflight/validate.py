@@ -115,6 +115,8 @@ def build_template_fixture(entry: dict[str, Any]) -> str:
     ]
     for stage in entry["stages"]:
         lines.append(f"  - {stage}")
+    if entry.get("workflow_always"):
+        lines.extend(["workflow:", "  rules:", "    - when: always"])
     lines.append("")
     for job in entry["jobs"]:
         lines.append(f"{job['name']}:")

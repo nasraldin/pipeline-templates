@@ -1,0 +1,29 @@
+image-build:
+  extends: .node
+  stage: publish
+  interruptible: false
+  rules:
+    - if: $RUN_IMAGE_BUILD == "true" && $AJRLY_PIPELINE_MODE == "trusted" && $APP_PATH && $APP_NAME
+      when: manual
+    - when: never
+  variables:
+    BUILD_CONTEXT: .
+    DOCKERFILE_PATH: Dockerfile
+    IMAGE_TAGS: latest
+    BUILDKIT_HOST: tcp://127.0.0.1:1234
+  script:
+    - test -n "$PLATFORM_HARBOR_PASSWORD"
+    - bash scripts/ci/build-image.sh
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - .ci-tmp/*/image-proof.json
+      - .ci-tmp/*/build-metadata.json
+  services:
+    - name: moby/buildkit:v0.24.0-rootless
+      alias: buildkit
+      command:
+        - --addr
+        - tcp://0.0.0.0:1234
+        - --oci-worker-no-process-sandbox

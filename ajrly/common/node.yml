@@ -1,0 +1,16 @@
+.node:
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl python3 gnupg unzip
+      ca-certificates
+    - !reference [.ajrly_source, before_script]
+    - curl --fail --silent --show-error --location https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.10.1.tgz
+      | tar -xz --strip-components=1 -C /usr/local/bin package/pnpm
+    - pnpm --version && node --version
+    - export CI_JOB_TMPDIR="$CI_PROJECT_DIR/.ci-tmp/$CI_JOB_ID"; mkdir -p "$CI_JOB_TMPDIR"
+    - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+    - export TURBO_CACHE=local:rw; unset TURBO_TOKEN; if [ -n "${TURBO_API:-}" ] && [ -n "${TURBO_CACHE_READ_TOKEN:-}"
+      ]; then export TURBO_TOKEN="$TURBO_CACHE_READ_TOKEN" TURBO_CACHE=local:rw,remote:r; fi
+  extends:
+    - .ajrly_source
+    - .ajrly_build_resources
+  needs: []

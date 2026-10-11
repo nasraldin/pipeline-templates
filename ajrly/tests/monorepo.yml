@@ -1,0 +1,57 @@
+.integration:
+  extends:
+    - .node
+    - .ajrly_integration_resources
+  stage: integration
+  variables:
+    PROJECT_PATH: apps/backend/api
+    NODE_ENV: test
+    DATABASE_HOST: 127.0.0.1
+    DATABASE_PORT: "5432"
+    DATABASE_NAME: ajrly
+    DATABASE_USER: postgres
+    DATABASE_PASSWORD: ci-disposable-only
+    POSTGRES_DB: ajrly
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: ci-disposable-only
+    SSL_POSTGRESQL_ENABLED: "false"
+    DATABASE_PROVIDER: local
+    REDIS_ENDPOINT: redis://127.0.0.1:6379
+    KUBERNETES_SERVICE_CPU_REQUEST: 100m
+    KUBERNETES_SERVICE_CPU_LIMIT: "1"
+    KUBERNETES_SERVICE_MEMORY_REQUEST: 256Mi
+    KUBERNETES_SERVICE_MEMORY_LIMIT: 1Gi
+  services:
+    - name: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+      alias: postgres
+    - name: redis:8-bookworm@sha256:47670742d7924adbcdb404d1288b6327815b23141969c0939b8e5d61f78c2634
+      alias: redis
+postgres-integration:
+  extends: .integration
+  timeout: 30m
+  variables:
+    WORKFLOW_INTEGRATION_DB: "true"
+    REVIEWS_DB_IT: "1"
+    CRM_CAPTURE_DB_IT: "1"
+    RENTAL_APPLICATION_DB_IT: "1"
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter=api^... --concurrency=1
+    - pnpm --filter @ajrly/db db:migrate
+    - pnpm --filter ./apps/backend/api db:seed
+    - pnpm --filter ./apps/backend/api test:integration
+openapi-parity:
+  extends: .integration
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter=api --concurrency=1
+    - cp apps/backend/api/.env.example apps/backend/api/.env
+    - pnpm --filter ./apps/backend/api openapi:check
+schema-parity:
+  extends: .integration
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm --filter ./apps/backend/api db:generate
+    - test -z "$(git status --porcelain apps/backend/api/src/infrastructure/database/migrations/)"
+    - if grep -rn --include="*.sql" -E "CREATE EXTENSION|CREATE ROLE|ALTER SYSTEM|CREATE TABLESPACE" apps/backend/api/src/infrastructure/database/migrations/;
+      then exit 1; fi
