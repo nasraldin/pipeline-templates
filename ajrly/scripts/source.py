@@ -40,6 +40,8 @@ def validate_event(payload: dict, github_metadata: dict) -> dict:
         target_ref = github_metadata.get("target_ref", "")
         if not SHA.fullmatch(target_sha) or not REF.fullmatch(target_ref) or not target_ref.startswith("refs/heads/"):
             raise ValueError("invalid pull request target")
+        if payload.get("target_sha") != target_sha or payload.get("target_ref") != target_ref:
+            raise ValueError("GitHub pull request target has changed; dispatch the current target")
         result.update(pr_number=number, target_sha=target_sha, target_ref=target_ref)
     elif ref.startswith("refs/heads/"):
         result["trusted"] = github_metadata.get("protected") is True
@@ -129,7 +131,8 @@ def main():
         return
     payload = {key: os.environ.get("AJRLY_" + env, "") for key, env in
                (("repository", "SOURCE_REPOSITORY"), ("sha", "SOURCE_SHA"), ("ref", "SOURCE_REF"),
-                ("event", "EVENT"), ("event_id", "EVENT_ID"), ("pr_number", "PR_NUMBER"))}
+                ("event", "EVENT"), ("event_id", "EVENT_ID"), ("pr_number", "PR_NUMBER"),
+                ("target_sha", "TARGET_SHA"), ("target_ref", "TARGET_REF"))}
     manifest = validate_event(payload, github_metadata(payload))
     if args.command == "checkout":
         checkout_exact("https://github.com/" + REPOSITORY + ".git", manifest["ref"], manifest["sha"], Path(args.destination),

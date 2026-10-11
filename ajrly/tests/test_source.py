@@ -42,15 +42,21 @@ class SourceTests(unittest.TestCase):
                 self.source.validate_event(dict(self.payload, **{key: value}), self.metadata)
 
     def test_pull_request_never_receives_publication_trust(self):
-        self.payload.update(event="pull_request", pr_number="7", ref="refs/pull/7/head")
+        self.payload.update(event="pull_request", pr_number="7", ref="refs/pull/7/head", target_sha="b" * 40, target_ref="refs/heads/main")
         self.metadata.update(ref="refs/pull/7/head", head_repository="nasraldin/ajrly-platform",
                              target_sha="b" * 40, target_ref="refs/heads/main")
         result = self.source.validate_event(self.payload, self.metadata)
         self.assertFalse(result["trusted"])
         self.assertEqual(result["target_sha"], "b" * 40)
 
+    def test_moved_pull_request_target_fails(self):
+        self.payload.update(event="pull_request", pr_number="7", ref="refs/pull/7/head", target_sha="b" * 40, target_ref="refs/heads/main")
+        self.metadata.update(ref="refs/pull/7/head", head_repository="nasraldin/ajrly-platform", target_sha="c" * 40, target_ref="refs/heads/main")
+        with self.assertRaises(ValueError):
+            self.source.validate_event(self.payload, self.metadata)
+
     def test_fork_fails_closed(self):
-        self.payload.update(event="pull_request", pr_number="7", ref="refs/pull/7/head")
+        self.payload.update(event="pull_request", pr_number="7", ref="refs/pull/7/head", target_sha="b" * 40, target_ref="refs/heads/main")
         self.metadata.update(ref="refs/pull/7/head", head_repository="someone/fork")
         with self.assertRaises(ValueError):
             self.source.validate_event(self.payload, self.metadata)
