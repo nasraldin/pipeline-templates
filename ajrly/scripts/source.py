@@ -78,21 +78,31 @@ def github_metadata(payload: dict) -> dict:
     return result
 
 
+def git_environment(token: str) -> dict:
+    environment = dict(os.environ)
+    if token:
+        environment.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
+                           GIT_CONFIG_VALUE_0="Authorization: Basic " + base64.b64encode(("x-access-token:" + token).encode()).decode())
+    return environment
+
+
+def is_affected(files: list, project: str) -> bool:
+    return any(not filename.startswith("apps/") or filename.startswith(project.rstrip("/") + "/")
+               or (project == "apps/backend/worker" and filename.startswith("apps/backend/api/")) for filename in files)
+
+
 def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str = "") -> None:
     if not SHA.fullmatch(sha) or ref.startswith("-") or ":" in ref:
         raise ValueError("invalid checkout identity")
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ)
-    if token:
-        environment.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
-                           GIT_CONFIG_VALUE_0="Authorization: Basic " + base64.b64encode(("x-access-token:" + token).encode()).decode())
+    environment = git_environment(token)
     def git(*args):
         return subprocess.check_output(["git", "-C", str(destination), *args], text=True,
                                        stderr=subprocess.DEVNULL, env=environment).strip()
     git("init", "-q")
     git("remote", "add", "origin", url)
-    git("fetch", "--no-tags", "--depth=1", "origin", ref)
+    git("fetch", "--no-tags", "--depth=2", "origin", ref)
     if git("rev-parse", "FETCH_HEAD") != sha:
         raise ValueError("fetched source does not match dispatched SHA")
     git("checkout", "--detach", "-q", sha)
@@ -102,9 +112,21 @@ def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str =
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["checkout", "verify"])
+    parser.add_argument("command", choices=["checkout", "verify", "affected"])
     parser.add_argument("--destination", default=".")
+    parser.add_argument("--path")
     args = parser.parse_args()
+    if args.command == "affected":
+        manifest = json.loads(Path(args.destination, ".ajrly-source.json").read_text())
+        base = manifest.get("target_sha", "HEAD^")
+        try:
+            files = subprocess.check_output(["git", "-C", args.destination, "diff", "--name-only", base, "HEAD"],
+                                            text=True, stderr=subprocess.DEVNULL).splitlines()
+        except subprocess.CalledProcessError:
+            print("true")
+            return
+        print("true" if is_affected(files, args.path or "") else "false")
+        return
     payload = {key: os.environ.get("AJRLY_" + env, "") for key, env in
                (("repository", "SOURCE_REPOSITORY"), ("sha", "SOURCE_SHA"), ("ref", "SOURCE_REF"),
                 ("event", "EVENT"), ("event_id", "EVENT_ID"), ("pr_number", "PR_NUMBER"))}
@@ -112,6 +134,10 @@ def main():
     if args.command == "checkout":
         checkout_exact("https://github.com/" + REPOSITORY + ".git", manifest["ref"], manifest["sha"], Path(args.destination),
                        os.environ.get("AJRLY_GITHUB_READ_TOKEN", ""))
+        if manifest.get("target_ref"):
+            subprocess.check_call(["git", "-C", args.destination, "fetch", "--no-tags", "--depth=1", "origin", manifest["target_sha"]],
+                                  env=git_environment(os.environ.get("AJRLY_GITHUB_READ_TOKEN", "")),
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         Path(args.destination, ".ajrly-source.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
     else:
         print(json.dumps(manifest, sort_keys=True))

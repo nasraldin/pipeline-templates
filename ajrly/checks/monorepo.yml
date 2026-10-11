@@ -20,5 +20,5 @@ changeset-status:
   script:
     - pnpm install --frozen-lockfile
     - export AJRLY_TARGET_REF="$(python3 -c 'import json; print(json.load(open(".ajrly-source.json"))["target_ref"])')"
-    - git fetch --no-tags origin "$AJRLY_TARGET_REF"
-    - pnpm changeset status --since=FETCH_HEAD
+    - export AJRLY_TARGET_SHA="$(python3 -c 'import json; print(json.load(open(".ajrly-source.json"))["target_sha"])')"
+    - pnpm changeset status --since="$AJRLY_TARGET_SHA"

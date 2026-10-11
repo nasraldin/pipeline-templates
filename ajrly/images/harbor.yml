@@ -3,7 +3,7 @@ image-build:
   stage: publish
   interruptible: false
   rules:
-    - if: $RUN_IMAGE_BUILD == "true" && $AJRLY_PIPELINE_MODE == "trusted" && $APP_PATH && $APP_NAME
+    - if: $RUN_IMAGE_BUILD == "true" && $AJRLY_PIPELINE_MODE == "trusted" && $AJRLY_BUILDKIT_READY == "true" && $APP_PATH && $APP_NAME
       when: manual
     - when: never
   variables:

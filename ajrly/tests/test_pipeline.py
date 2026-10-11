@@ -51,7 +51,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_resource_profiles_bound_builds(self):
         variables = self.pipeline[".ajrly_build_resources"]["variables"]
-        self.assertEqual(variables["KUBERNETES_MEMORY_REQUEST"], "2Gi")
+        self.assertEqual(variables["KUBERNETES_MEMORY_REQUEST"], "4Gi")
         self.assertEqual(variables["KUBERNETES_MEMORY_LIMIT"], "4Gi")
         self.assertEqual(self.pipeline["variables"]["GIT_STRATEGY"], "none")
 

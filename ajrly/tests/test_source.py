@@ -55,6 +55,14 @@ class SourceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.source.validate_event(self.payload, self.metadata)
 
+    def test_shared_changes_affect_every_app(self):
+        self.assertTrue(self.source.is_affected(["packages/ui/src/index.ts"], "apps/web/admin"))
+        self.assertTrue(self.source.is_affected(["pnpm-lock.yaml"], "apps/web/admin"))
+
+    def test_unrelated_app_changes_skip_work(self):
+        self.assertFalse(self.source.is_affected(["apps/web/blog/src/page.astro"], "apps/web/admin"))
+        self.assertTrue(self.source.is_affected(["apps/web/admin/src/page.tsx"], "apps/web/admin"))
+
     def test_checkout_verifies_exact_sha_without_credentials_in_origin(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

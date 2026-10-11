@@ -58,6 +58,7 @@ apps:
         APP_NAME:
           - worker
   script:
+    - if [ "$(python3 /tmp/ajrly-source.py affected --path "$PROJECT_PATH")" = false ]; then echo "No changes affect $PROJECT_PATH"; exit 0; fi
     - node scripts/pnpm-install-scoped.mjs
     - export APP_PACKAGE_NAME="$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync(process.env.PROJECT_PATH+"/package.json","utf8")).name)')"
     - pnpm lint:check --filter="$APP_PACKAGE_NAME" --concurrency=1
