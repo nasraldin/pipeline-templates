@@ -1,5 +1,5 @@
 security:semgrep:
-  extends: .node
+  extends: [.node, .ajrly_check_resources]
   stage: analysis
   rules: &id001
     - if: $RUN_SECURITY == "true"
@@ -8,7 +8,7 @@ security:semgrep:
   script:
     - bash scripts/ci/security-tools.sh semgrep
 security:osv:
-  extends: .node
+  extends: [.node, .ajrly_check_resources]
   stage: analysis
   rules: *id001
   script:
@@ -32,7 +32,7 @@ security:gitleaks:
       when: on_success
     - when: never
   script:
-    - gitleaks detect --source . --config .gitleaks.toml --redact --exit-code 1
+    - gitleaks dir . --config .gitleaks.toml --redact --exit-code 1
   extends:
     - .ajrly_source
     - .ajrly_check_resources

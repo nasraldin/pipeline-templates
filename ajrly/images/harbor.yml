@@ -21,7 +21,7 @@ image-build:
       - .ci-tmp/*/image-proof.json
       - .ci-tmp/*/build-metadata.json
   services:
-    - name: moby/buildkit:v0.24.0-rootless
+    - name: moby/buildkit:v0.33.1-rootless
       alias: buildkit
       command:
         - --addr
