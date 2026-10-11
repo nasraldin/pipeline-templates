@@ -2,6 +2,7 @@
   variables:
     # Kubernetes jobs read public npm dependencies through the local proxy cache.
     PNPM_CONFIG_REGISTRY: http://verdaccio.artifacts.svc.cluster.local:4873/
+    PNPM_CONFIG_NETWORK_CONCURRENCY: "8"
   before_script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl python3 gnupg unzip
       ca-certificates
