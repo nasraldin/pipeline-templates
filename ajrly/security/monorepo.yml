@@ -49,7 +49,7 @@ security:trivy:
   cache: []
   rules: *id002
   script:
-    - trivy fs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs node_modules,.next,dist,coverage,test-results
+    - trivy fs --timeout 15m --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs .git,node_modules,.next,dist,coverage,test-results
       .
     - trivy config --severity HIGH,CRITICAL --exit-code 1 apps/backend/api/Dockerfile
     - trivy config --severity HIGH,CRITICAL --exit-code 1 apps/web/admin/Dockerfile
