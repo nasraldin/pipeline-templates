@@ -76,14 +76,14 @@ def lint_ref() -> str:
     )
 
 
-def ci_lint(content: str) -> dict[str, Any]:
+def ci_lint(content: str, ref: str | None = None) -> dict[str, Any]:
     pid = urllib.request.quote(str(project_id()), safe="")
     url = f"{api_base()}/projects/{pid}/ci/lint"
     payload = {
         "content": content,
         "dry_run": True,
         "include_jobs": True,
-        "ref": lint_ref(),
+        "ref": ref or lint_ref(),
     }
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
@@ -335,7 +335,7 @@ def run_root(write: bool) -> list[tuple[str, list[str]]]:
     raw = (ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
     # Expand workspace locals so new preflight includes validate before push.
     content = expand_local_includes(raw)
-    data = ci_lint(content)
+    data = ci_lint(content, ref=os.environ.get("CI_DEFAULT_BRANCH", "main"))
     snap = snapshot_from_result("root-gitlab-ci", "root", data)
     if write:
         write_expected("root-gitlab-ci", snap)

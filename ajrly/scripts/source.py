@@ -93,7 +93,7 @@ def is_affected(files: list, project: str) -> bool:
                or (project == "apps/backend/worker" and filename.startswith("apps/backend/api/")) for filename in files)
 
 
-def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str = "") -> None:
+def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str = "", full_history: bool = False) -> None:
     if not SHA.fullmatch(sha) or ref.startswith("-") or ":" in ref:
         raise ValueError("invalid checkout identity")
     destination = Path(destination)
@@ -104,7 +104,7 @@ def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str =
                                        stderr=subprocess.DEVNULL, env=environment).strip()
     git("init", "-q")
     git("remote", "add", "origin", url)
-    git("fetch", "--no-tags", "--depth=2", "origin", ref)
+    git("fetch", "--no-tags", *([] if full_history else ["--depth=2"]), "origin", ref)
     if git("rev-parse", "FETCH_HEAD") != sha:
         raise ValueError("fetched source does not match dispatched SHA")
     git("checkout", "--detach", "-q", sha)
@@ -136,7 +136,8 @@ def main():
     manifest = validate_event(payload, github_metadata(payload))
     if args.command == "checkout":
         checkout_exact("https://github.com/" + REPOSITORY + ".git", manifest["ref"], manifest["sha"], Path(args.destination),
-                       os.environ.get("AJRLY_GITHUB_READ_TOKEN", ""))
+                       os.environ.get("AJRLY_GITHUB_READ_TOKEN", ""),
+                       full_history=os.environ.get("AJRLY_SOURCE_FULL_HISTORY") == "true")
         if manifest.get("target_ref"):
             subprocess.check_call(["git", "-C", args.destination, "fetch", "--no-tags", "--depth=1", "origin", manifest["target_sha"]],
                                   env=git_environment(os.environ.get("AJRLY_GITHUB_READ_TOKEN", "")),

@@ -7,7 +7,9 @@ fetched at the exact dispatched SHA rather than the coordination project's SHA.
 
 Required inputs are `AJRLY_SOURCE_REPOSITORY` (`nasraldin/ajrly-platform`),
 `AJRLY_SOURCE_SHA`, `AJRLY_SOURCE_REF`, `AJRLY_EVENT`, and `AJRLY_EVENT_ID`.
-PR events additionally supply `AJRLY_PR_NUMBER`. A dedicated read credential
+PR events additionally supply `AJRLY_PR_NUMBER`, `AJRLY_TARGET_SHA` and
+`AJRLY_TARGET_REF`. Source and target movement fail closed. Changeset checks
+request complete source history to find the verified target merge base. A dedicated read credential
 `AJRLY_GITHUB_READ_TOKEN` supplies access to the private source repository.
 The coordination project must be on this project's CI job-token allowlist.
 

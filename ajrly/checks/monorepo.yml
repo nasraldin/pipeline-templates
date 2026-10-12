@@ -13,6 +13,8 @@ packages:
       --filter="./packages/*" --filter=realtime --concurrency=1
 changeset-status:
   extends: .node
+  variables:
+    AJRLY_SOURCE_FULL_HISTORY: "true"
   stage: validate
   rules:
     - if: $AJRLY_EVENT == "pull_request"

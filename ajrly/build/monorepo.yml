@@ -67,8 +67,12 @@ apps:
     - pnpm exec node scripts/run-turbo-safe.mjs run build --filter="$APP_PACKAGE_NAME" --concurrency=1
     - if [ -n "$TEST_COMMAND" ]; then NODE_ENV=test pnpm exec node scripts/run-turbo-safe.mjs run "$TEST_COMMAND"
       --filter="$APP_PACKAGE_NAME..." --concurrency=1; fi
+  after_script:
+    - mkdir -p .ci-artifacts
+    - if [ -f .ajrly-source.json ]; then cp .ajrly-source.json .ci-artifacts/source.json; else printf '{}\n' > .ci-artifacts/source.json; fi
+    - find apps -type d -name coverage -prune -exec cp --parents -r {} .ci-artifacts/ \;
   artifacts:
     when: always
     expire_in: 1 week
     paths:
-      - apps/**/coverage/
+      - .ci-artifacts/

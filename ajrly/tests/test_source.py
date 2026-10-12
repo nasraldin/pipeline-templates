@@ -69,6 +69,26 @@ class SourceTests(unittest.TestCase):
         self.assertFalse(self.source.is_affected(["apps/web/blog/src/page.astro"], "apps/web/admin"))
         self.assertTrue(self.source.is_affected(["apps/web/admin/src/page.tsx"], "apps/web/admin"))
 
+    def test_full_history_retains_changeset_merge_base(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            upstream = pathlib.Path(tmp) / "upstream"
+            upstream.mkdir()
+            def git(*args):
+                return subprocess.check_output(["git", "-C", str(upstream), *args], text=True).strip()
+            git("init", "-q")
+            git("config", "user.email", "ci@example.invalid")
+            git("config", "user.name", "CI test")
+            commits = []
+            for index in range(5):
+                (upstream / "content").write_text(str(index))
+                git("add", "content")
+                git("commit", "-qm", "change")
+                commits.append(git("rev-parse", "HEAD"))
+            checkout = pathlib.Path(tmp) / "checkout"
+            self.source.checkout_exact(str(upstream), "HEAD", commits[-1], checkout, full_history=True)
+            base = subprocess.check_output(["git", "-C", str(checkout), "merge-base", commits[0], "HEAD"], text=True).strip()
+            self.assertEqual(base, commits[0])
+
     def test_checkout_verifies_exact_sha_without_credentials_in_origin(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
