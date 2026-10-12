@@ -1,0 +1,10 @@
+.ajrly_source:
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - >-
+      test -n "$AJRLY_TEMPLATES_REF" &&
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      "http://192.168.68.12/api/v4/projects/1/repository/files/ajrly%2Fscripts%2Fsource.py/raw?ref=$AJRLY_TEMPLATES_REF"
+      --output /tmp/ajrly-source.py
+    - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"

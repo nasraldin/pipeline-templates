@@ -1,0 +1,414 @@
+sonar:admin:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/admin
+    SONAR_PROJECT_PATH: apps/web/admin
+    SONAR_PROJECT_KEY: ajrly-platform-admin
+    SONAR_PROJECT_NAME: Ajrly Platform - App - admin
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/admin..." --concurrency=1
+    - pnpm --filter "./apps/web/admin" test:coverage
+    - test -f "apps/web/admin/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_ADMIN_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:api:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/backend/api
+    SONAR_PROJECT_PATH: apps/backend/api
+    SONAR_PROJECT_KEY: ajrly-platform-api
+    SONAR_PROJECT_NAME: Ajrly Platform - App - api
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/backend/api..." --concurrency=1
+    - pnpm --filter "./apps/backend/api" test:coverage
+    - test -f "apps/backend/api/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_API_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:auth-config:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/auth-config
+    SONAR_PROJECT_PATH: packages/auth-config
+    SONAR_PROJECT_KEY: ajrly-platform-auth-config
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Auth config
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/auth-config..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_AUTH_CONFIG_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:blocks:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/blocks
+    SONAR_PROJECT_PATH: packages/blocks
+    SONAR_PROJECT_KEY: ajrly-platform-blocks
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Blocks
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/blocks..." --concurrency=1
+    - pnpm --filter "./packages/blocks" test:coverage
+    - test -f "packages/blocks/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_BLOCKS_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:blog:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/blog
+    SONAR_PROJECT_PATH: apps/web/blog
+    SONAR_PROJECT_KEY: ajrly-platform-blog
+    SONAR_PROJECT_NAME: Ajrly Platform - App - blog
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/blog..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_BLOG_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:components:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/components
+    SONAR_PROJECT_PATH: packages/components
+    SONAR_PROJECT_KEY: ajrly-platform-components
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Components
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/components..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_COMPONENTS_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:config:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/config
+    SONAR_PROJECT_PATH: packages/config
+    SONAR_PROJECT_KEY: ajrly-platform-config
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Config
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/config..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_CONFIG_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:content:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/content
+    SONAR_PROJECT_PATH: packages/content
+    SONAR_PROJECT_KEY: ajrly-platform-content
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Content
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/content..." --concurrency=1
+    - pnpm --filter "./packages/content" test:coverage
+    - test -f "packages/content/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_CONTENT_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:dashboard:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/dashboard
+    SONAR_PROJECT_PATH: apps/web/dashboard
+    SONAR_PROJECT_KEY: ajrly-platform-dashboard
+    SONAR_PROJECT_NAME: Ajrly Platform - App - dashboard
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/dashboard..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_DASHBOARD_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:docs:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/docs
+    SONAR_PROJECT_PATH: apps/web/docs
+    SONAR_PROJECT_KEY: ajrly-platform-docs
+    SONAR_PROJECT_NAME: Ajrly Platform - App - docs
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/docs..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_DOCS_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:editor:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/editor
+    SONAR_PROJECT_PATH: packages/editor
+    SONAR_PROJECT_KEY: ajrly-platform-editor
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Editor
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/editor..." --concurrency=1
+    - pnpm --filter "./packages/editor" test:coverage
+    - test -f "packages/editor/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_EDITOR_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:email-template:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/email-template
+    SONAR_PROJECT_PATH: packages/email-template
+    SONAR_PROJECT_KEY: ajrly-platform-email-template
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Email template
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/email-template..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_EMAIL_TEMPLATE_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:feedback-contract:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/feedback-contract
+    SONAR_PROJECT_PATH: packages/feedback-contract
+    SONAR_PROJECT_KEY: ajrly-platform-feedback-contract
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Feedback contract
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/feedback-contract..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_FEEDBACK_CONTRACT_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:feedback-ui:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/feedback-ui
+    SONAR_PROJECT_PATH: packages/feedback-ui
+    SONAR_PROJECT_KEY: ajrly-platform-feedback-ui
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Feedback UI
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/feedback-ui..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_FEEDBACK_UI_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:i18n:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/i18n
+    SONAR_PROJECT_PATH: packages/i18n
+    SONAR_PROJECT_KEY: ajrly-platform-i18n
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - i18n
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/i18n..." --concurrency=1
+    - pnpm --filter "./packages/i18n" test:coverage
+    - test -f "packages/i18n/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_I18N_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:kindness-sdk:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/kindness-sdk
+    SONAR_PROJECT_PATH: packages/kindness-sdk
+    SONAR_PROJECT_KEY: ajrly-platform-kindness-sdk
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Kindness SDK
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/kindness-sdk..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_KINDNESS_SDK_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:marketing:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/marketing
+    SONAR_PROJECT_PATH: apps/web/marketing
+    SONAR_PROJECT_KEY: ajrly-platform-marketing
+    SONAR_PROJECT_NAME: Ajrly Platform - App - marketing
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/marketing..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_MARKETING_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:marketplace:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: apps/web/marketplace
+    SONAR_PROJECT_PATH: apps/web/marketplace
+    SONAR_PROJECT_KEY: ajrly-platform-marketplace
+    SONAR_PROJECT_NAME: Ajrly Platform - App - marketplace
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./apps/web/marketplace..." --concurrency=1
+    - pnpm --filter "./apps/web/marketplace" test:coverage
+    - test -f "apps/web/marketplace/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_MARKETPLACE_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:notifications-client:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/notifications-client
+    SONAR_PROJECT_PATH: packages/notifications-client
+    SONAR_PROJECT_KEY: ajrly-platform-notifications-client
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Notifications client
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/notifications-client..." --concurrency=1
+    - pnpm --filter "./packages/notifications-client" test:coverage
+    - test -f "packages/notifications-client/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_NOTIFICATIONS_CLIENT_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:notifications-contract:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/notifications-contract
+    SONAR_PROJECT_PATH: packages/notifications-contract
+    SONAR_PROJECT_KEY: ajrly-platform-notifications-contract
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Notifications contract
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/notifications-contract..." --concurrency=1
+    - pnpm --filter "./packages/notifications-contract" test:coverage
+    - test -f "packages/notifications-contract/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_NOTIFICATIONS_CONTRACT_TOKEN}"; test -n "$SONAR_TOKEN"; bash
+      scripts/ci/sonar-scan.sh
+sonar:ui:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/ui
+    SONAR_PROJECT_PATH: packages/ui
+    SONAR_PROJECT_KEY: ajrly-platform-ui
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - UI
+    SONAR_COVERAGE_PATH: ""
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/ui..." --concurrency=1
+    - export SONAR_TOKEN="${PLATFORM_SONAR_UI_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:utils:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/utils
+    SONAR_PROJECT_PATH: packages/utils
+    SONAR_PROJECT_KEY: ajrly-platform-utils
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Utils
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/utils..." --concurrency=1
+    - pnpm --filter "./packages/utils" test:coverage
+    - test -f "packages/utils/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_UTILS_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh
+sonar:widgets:
+  extends: .node
+  stage: analysis
+  rules:
+    - if: $RUN_SONAR == "true" && $AJRLY_PIPELINE_MODE == "trusted"
+    - when: never
+  variables:
+    PROJECT_PATH: packages/widgets
+    SONAR_PROJECT_PATH: packages/widgets
+    SONAR_PROJECT_KEY: ajrly-platform-widgets
+    SONAR_PROJECT_NAME: Ajrly Platform - Packages - Widgets
+    SONAR_COVERAGE_PATH: coverage/lcov.info
+    SONAR_HOST_URL: https://sonar.ajrly.com
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm turbo run build --filter="./packages/widgets..." --concurrency=1
+    - pnpm --filter "./packages/widgets" test:coverage
+    - test -f "packages/widgets/coverage/lcov.info"
+    - export SONAR_TOKEN="${PLATFORM_SONAR_WIDGETS_TOKEN}"; test -n "$SONAR_TOKEN"; bash scripts/ci/sonar-scan.sh

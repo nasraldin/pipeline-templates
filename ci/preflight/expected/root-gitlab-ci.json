@@ -31,6 +31,12 @@
       "allow_failure": false
     },
     {
+      "name": "preflight:template: [ajrly-monorepo]",
+      "stage": "preflight",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
       "name": "preflight:template: [common-node24]",
       "stage": "preflight",
       "when": "on_success",

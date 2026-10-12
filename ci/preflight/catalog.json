@@ -534,6 +534,29 @@
         }
       ],
       "expected_merged": [".gitops_values_lint", "gitops:values-lint"]
+    },
+    {
+      "id": "ajrly-monorepo",
+      "workflow_always": true,
+      "template": "ajrly/pipeline.yml",
+      "stages": ["validate", "integration", "analysis", "publish"],
+      "jobs": [
+        {
+          "name": "preflight:ajrly",
+          "extends": ".node",
+          "stage": "validate",
+          "script": ["node --version"],
+          "script_contains": ["node --version"]
+        }
+      ],
+      "expected_merged": [
+        ".ajrly_source",
+        ".ajrly_build_resources",
+        ".node",
+        "apps",
+        "packages",
+        "preflight:ajrly"
+      ]
     }
   ],
   "examples": [

@@ -1,0 +1,78 @@
+apps:
+  extends: .node
+  stage: validate
+  parallel:
+    matrix:
+      - PROJECT_PATH:
+          - apps/web/admin
+        TEST_COMMAND:
+          - test
+        APP_NAME:
+          - admin
+      - PROJECT_PATH:
+          - apps/backend/api
+        TEST_COMMAND:
+          - test:coverage
+        APP_NAME:
+          - api
+      - PROJECT_PATH:
+          - apps/web/blog
+        TEST_COMMAND:
+          - ""
+        APP_NAME:
+          - blog
+      - PROJECT_PATH:
+          - apps/web/dashboard
+        TEST_COMMAND:
+          - ""
+        APP_NAME:
+          - dashboard
+      - PROJECT_PATH:
+          - apps/web/docs
+        TEST_COMMAND:
+          - ""
+        APP_NAME:
+          - docs
+      - PROJECT_PATH:
+          - apps/web/iam
+        TEST_COMMAND:
+          - ""
+        APP_NAME:
+          - iam
+      - PROJECT_PATH:
+          - apps/web/marketing
+        TEST_COMMAND:
+          - ""
+        APP_NAME:
+          - marketing
+      - PROJECT_PATH:
+          - apps/web/marketplace
+        TEST_COMMAND:
+          - test
+        APP_NAME:
+          - marketplace
+      - PROJECT_PATH:
+          - apps/backend/worker
+        TEST_COMMAND:
+          - test
+        APP_NAME:
+          - worker
+  script:
+    - if [ "$(python3 /tmp/ajrly-source.py affected --path "$PROJECT_PATH")" = false ]; then echo "No changes affect $PROJECT_PATH"; exit 0; fi
+    - node scripts/pnpm-install-scoped.mjs
+    - export APP_PACKAGE_NAME="$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync(process.env.PROJECT_PATH+"/package.json","utf8")).name)')"
+    - pnpm lint:check --filter="$APP_PACKAGE_NAME" --concurrency=1
+    - pnpm format:check --filter="$APP_PACKAGE_NAME..."
+    - pnpm typecheck --filter="$APP_PACKAGE_NAME" --concurrency=1
+    - pnpm exec node scripts/run-turbo-safe.mjs run build --filter="$APP_PACKAGE_NAME" --concurrency=1
+    - if [ -n "$TEST_COMMAND" ]; then NODE_ENV=test pnpm exec node scripts/run-turbo-safe.mjs run "$TEST_COMMAND"
+      --filter="$APP_PACKAGE_NAME..." --concurrency=1; fi
+  after_script:
+    - mkdir -p .ci-artifacts
+    - if [ -f .ajrly-source.json ]; then cp .ajrly-source.json .ci-artifacts/source.json; else printf '{}\n' > .ci-artifacts/source.json; fi
+    - find apps -type d -name coverage -prune -exec cp --parents -r {} .ci-artifacts/ \;
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - .ci-artifacts/

@@ -1,0 +1,26 @@
+packages:
+  extends: .node
+  stage: validate
+  variables:
+    PNPM_INSTALL_SCOPE: packages
+  script:
+    - node scripts/pnpm-install-scoped.mjs
+    - pnpm test:root
+    - pnpm eslint:check
+    - pnpm root-format:check
+    - pnpm security:messages:check
+    - pnpm exec node scripts/run-turbo-safe.mjs run lint:check typecheck build test test:types format:check
+      --filter="./packages/*" --filter=realtime --concurrency=1
+changeset-status:
+  extends: .node
+  variables:
+    AJRLY_SOURCE_FULL_HISTORY: "true"
+  stage: validate
+  rules:
+    - if: $AJRLY_EVENT == "pull_request"
+    - when: never
+  script:
+    - pnpm install --frozen-lockfile
+    - export AJRLY_TARGET_REF="$(python3 -c 'import json; print(json.load(open(".ajrly-source.json"))["target_ref"])')"
+    - export AJRLY_TARGET_SHA="$(python3 -c 'import json; print(json.load(open(".ajrly-source.json"))["target_sha"])')"
+    - pnpm changeset status --since="$AJRLY_TARGET_SHA"

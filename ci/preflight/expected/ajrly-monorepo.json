@@ -1,0 +1,169 @@
+{
+  "id": "ajrly-monorepo",
+  "kind": "template",
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "merged_keys": [
+    ".ajrly_source",
+    ".ajrly_check_resources",
+    ".ajrly_build_resources",
+    ".ajrly_integration_resources",
+    ".node",
+    "packages",
+    "changeset-status",
+    ".integration",
+    "postgres-integration",
+    "openapi-parity",
+    "schema-parity",
+    "apps",
+    "security:semgrep",
+    "security:osv",
+    "security:audit",
+    "security:gitleaks",
+    "security:trivy",
+    "sonar:admin",
+    "sonar:api",
+    "sonar:auth-config",
+    "sonar:blocks",
+    "sonar:blog",
+    "sonar:components",
+    "sonar:config",
+    "sonar:content",
+    "sonar:dashboard",
+    "sonar:docs",
+    "sonar:editor",
+    "sonar:email-template",
+    "sonar:feedback-contract",
+    "sonar:feedback-ui",
+    "sonar:i18n",
+    "sonar:kindness-sdk",
+    "sonar:marketing",
+    "sonar:marketplace",
+    "sonar:notifications-client",
+    "sonar:notifications-contract",
+    "sonar:ui",
+    "sonar:utils",
+    "sonar:widgets",
+    "image-build",
+    "changeset-version",
+    "preflight:ajrly"
+  ],
+  "jobs": [
+    {
+      "name": "packages",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/admin, test, admin]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/backend/api, test:coverage, api]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/blog, , blog]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/dashboard, , dashboard]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/docs, , docs]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/iam, , iam]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/marketing, , marketing]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/web/marketplace, test, marketplace]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "apps: [apps/backend/worker, test, worker]",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "preflight:ajrly",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "postgres-integration",
+      "stage": "integration",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "openapi-parity",
+      "stage": "integration",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "schema-parity",
+      "stage": "integration",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:semgrep",
+      "stage": "analysis",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:osv",
+      "stage": "analysis",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:audit",
+      "stage": "analysis",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:gitleaks",
+      "stage": "analysis",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "security:trivy",
+      "stage": "analysis",
+      "when": "on_success",
+      "allow_failure": false
+    }
+  ],
+  "includes": []
+}

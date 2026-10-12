@@ -1,0 +1,35 @@
+include:
+  - local: ajrly/common/source.yml
+  - local: ajrly/common/resources.yml
+  - local: ajrly/common/node.yml
+  - local: ajrly/checks/monorepo.yml
+  - local: ajrly/tests/monorepo.yml
+  - local: ajrly/build/monorepo.yml
+  - local: ajrly/security/monorepo.yml
+  - local: ajrly/quality/sonar.yml
+  - local: ajrly/images/harbor.yml
+  - local: ajrly/release/changesets.yml
+workflow:
+  rules:
+    - if:
+        $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web"
+        || $CI_PIPELINE_SOURCE == "pipeline"
+stages:
+  - validate
+  - integration
+  - analysis
+  - publish
+default:
+  image: node:26.11.1-bookworm
+  interruptible: true
+  tags:
+    - ajrly-kubernetes
+  timeout: 45m
+variables:
+  GIT_DEPTH: "0"
+  NODE_OPTIONS: --max-old-space-size=2048
+  JEST_MAX_WORKERS: "1"
+  npm_config_child_concurrency: "1"
+  GIT_STRATEGY: none
+  AJRLY_PIPELINE_MODE: checks
+  RUN_SECURITY: "true"
