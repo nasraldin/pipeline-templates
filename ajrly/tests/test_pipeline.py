@@ -1,4 +1,6 @@
 import pathlib
+import shlex
+import subprocess
 import unittest
 import yaml
 
@@ -48,6 +50,15 @@ class PipelineTests(unittest.TestCase):
             rules = self.pipeline[name]["rules"]
             self.assertIn('AJRLY_PIPELINE_MODE == "trusted"', rules[0]["if"])
             self.assertEqual(rules[-1], {"when": "never"})
+
+    def test_artifact_shell_escaping(self):
+        commands = self.pipeline["apps"]["after_script"]
+        find = next(command for command in commands if command.startswith("find "))
+        self.assertEqual(shlex.split(find)[-1], ";", "find -exec must receive its terminator")
+        fallback = next(command for command in commands if "printf" in command)
+        expression = fallback.split("else ", 1)[1].split(" >", 1)[0]
+        output = subprocess.check_output(["sh", "-c", expression])
+        self.assertEqual(output, b"{}\n")
 
     def test_resource_profiles_bound_builds(self):
         variables = self.pipeline[".ajrly_build_resources"]["variables"]
