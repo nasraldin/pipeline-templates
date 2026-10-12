@@ -3,6 +3,7 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "scripts/source.py"
 
@@ -17,6 +18,26 @@ class SourceTests(unittest.TestCase):
                             ref="refs/heads/main", event="push", event_id="42")
         self.metadata = dict(repository="nasraldin/ajrly-platform", sha="a" * 40,
                              ref="refs/heads/main", protected=True)
+
+    def test_transient_git_fetch_retries_without_changing_identity(self):
+        error = subprocess.CalledProcessError(128, ["git"], stderr="error: RPC failed; curl 92 HTTP/2 stream reset")
+        success = subprocess.CompletedProcess(["git"], 0, stdout="", stderr="")
+        with mock.patch.object(self.source.subprocess, "run", side_effect=[error, success]) as run, \
+                mock.patch.object(self.source.time, "sleep"):
+            self.source.git_fetch(pathlib.Path("."), ["--depth=1", "origin", "a" * 40], "fixture-token")
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].args, run.call_args_list[1].args)
+        self.assertIn("http.version=HTTP/1.1", run.call_args.args[0])
+
+    def test_git_auth_errors_are_not_retried_or_logged_with_credentials(self):
+        token = "fixture-secret-token"
+        error = subprocess.CalledProcessError(128, ["git"], stderr="fatal: Authentication failed " + token)
+        with mock.patch.object(self.source.subprocess, "run", side_effect=error) as run, \
+                self.assertRaises(RuntimeError) as raised:
+            self.source.git_fetch(pathlib.Path("."), ["origin", "a" * 40], token)
+        self.assertEqual(run.call_count, 1)
+        self.assertNotIn(token, str(raised.exception))
+        self.assertIn("Authentication failed", str(raised.exception))
 
     def test_protected_push_is_trusted(self):
         self.assertTrue(self.source.validate_event(self.payload, self.metadata)["trusted"])

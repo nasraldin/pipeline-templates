@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -93,6 +94,31 @@ def is_affected(files: list, project: str) -> bool:
                or (project == "apps/backend/worker" and filename.startswith("apps/backend/api/")) for filename in files)
 
 
+def git_fetch(destination: Path, arguments: list, token: str = "") -> None:
+    command = ["git", "-C", str(destination), "-c", "http.version=HTTP/1.1", "fetch", "--no-tags", *arguments]
+    for attempt in range(3):
+        try:
+            subprocess.run(command, text=True, capture_output=True, check=True,
+                           env=git_environment(token), timeout=120)
+            return
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            message = error.stderr or "git transport timeout"
+            if isinstance(message, bytes):
+                message = message.decode("utf-8", errors="replace")
+            for secret in (token, base64.b64encode(("x-access-token:" + token).encode()).decode() if token else ""):
+                if secret:
+                    message = message.replace(secret, "[REDACTED]")
+            message = re.sub(r"(?i)authorization:[^\r\n]*", "Authorization: [REDACTED]", message)
+            message = re.sub(r"https://[^/\s]+@", "https://[REDACTED]@", message)
+            transient = isinstance(error, subprocess.TimeoutExpired) or bool(re.search(
+                r"curl (?:6|7|16|18|28|35|52|55|56|92)\b|HTTP (?:429|5\d\d)|returned error: (?:429|5\d\d)|early EOF|remote end hung up",
+                message, re.IGNORECASE))
+            if not transient or attempt == 2:
+                raise RuntimeError("git fetch failed: " + message.strip()[:500]) from None
+            print("Transient Git transport failure; retrying the same fetch", flush=True)
+            time.sleep(2 ** (attempt + 1))
+
+
 def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str = "", full_history: bool = False) -> None:
     if not SHA.fullmatch(sha) or ref.startswith("-") or ":" in ref:
         raise ValueError("invalid checkout identity")
@@ -104,7 +130,7 @@ def checkout_exact(url: str, ref: str, sha: str, destination: Path, token: str =
                                        stderr=subprocess.DEVNULL, env=environment).strip()
     git("init", "-q")
     git("remote", "add", "origin", url)
-    git("fetch", "--no-tags", *([] if full_history else ["--depth=2"]), "origin", ref)
+    git_fetch(destination, [*([] if full_history else ["--depth=2"]), "origin", ref], token)
     if git("rev-parse", "FETCH_HEAD") != sha:
         raise ValueError("fetched source does not match dispatched SHA")
     git("checkout", "--detach", "-q", sha)
@@ -139,9 +165,8 @@ def main():
                        os.environ.get("AJRLY_GITHUB_READ_TOKEN", ""),
                        full_history=os.environ.get("AJRLY_SOURCE_FULL_HISTORY") == "true")
         if manifest.get("target_ref"):
-            subprocess.check_call(["git", "-C", args.destination, "fetch", "--no-tags", "--depth=1", "origin", manifest["target_sha"]],
-                                  env=git_environment(os.environ.get("AJRLY_GITHUB_READ_TOKEN", "")),
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            git_fetch(Path(args.destination), ["--depth=1", "origin", manifest["target_sha"]],
+                      os.environ.get("AJRLY_GITHUB_READ_TOKEN", ""))
         Path(args.destination, ".ajrly-source.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
     else:
         print(json.dumps(manifest, sort_keys=True))
