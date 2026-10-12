@@ -60,6 +60,11 @@ class PipelineTests(unittest.TestCase):
         output = subprocess.check_output(["sh", "-c", expression])
         self.assertEqual(output, b"{}\n")
 
+    def test_native_typechecker_has_a_budget_below_the_container_limit(self):
+        env = self.pipeline[".node"]["variables"]
+        self.assertEqual(env.get("GOMAXPROCS"), "2")
+        self.assertEqual(env.get("GOMEMLIMIT"), "1GiB")
+
     def test_resource_profiles_bound_builds(self):
         variables = self.pipeline[".ajrly_build_resources"]["variables"]
         self.assertEqual(variables["KUBERNETES_MEMORY_REQUEST"], "1920Mi")

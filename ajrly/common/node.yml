@@ -3,6 +3,9 @@
     # Public dependency reads must not overload the shared publication registry.
     PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
     PNPM_CONFIG_NETWORK_CONCURRENCY: "8"
+    # The TS 7 CLI uses Go; leave room for Node and Turbopack in the same pod.
+    GOMAXPROCS: "2"
+    GOMEMLIMIT: 1GiB
   before_script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl python3 gnupg unzip
       ca-certificates
