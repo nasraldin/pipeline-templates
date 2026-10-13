@@ -64,6 +64,9 @@ class PipelineTests(unittest.TestCase):
         env = self.pipeline[".node"]["variables"]
         self.assertEqual(env.get("GOMAXPROCS"), "2")
         self.assertEqual(env.get("GOMEMLIMIT"), "1GiB")
+        self.assertEqual(env.get("PNPM_CONFIG_NETWORK_CONCURRENCY"), "4")
+        self.assertEqual(env.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
+        self.assertNotIn("cache", self.pipeline[".node"])
 
     def test_resource_profiles_bound_builds(self):
         variables = self.pipeline[".ajrly_build_resources"]["variables"]

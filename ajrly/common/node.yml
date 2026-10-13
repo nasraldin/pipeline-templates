@@ -1,8 +1,17 @@
 .node:
   variables:
-    # Public dependency reads must not overload the shared publication registry.
+    # Public dependency reads remain default until root verifies private npm + scopes.
     PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
-    PNPM_CONFIG_NETWORK_CONCURRENCY: "8"
+    PNPM_CONFIG_NETWORK_CONCURRENCY: "4"
+    # Gated cutover interfaces (empty/false until root enables after verification).
+    AJRLY_NPM_REGISTRY: ""
+    AJRLY_DEPENDENCY_CACHE_ENABLED: "false"
+    AJRLY_DEPENDENCY_CACHE_ENDPOINT: ""
+    AJRLY_DEPENDENCY_CACHE_BUCKET: ""
+    AJRLY_DEPENDENCY_CACHE_PREFIX: "canonical/"
+    AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
+    AJRLY_NODE_VERSION: "26.11.1"
+    AJRLY_PNPM_VERSION: "12.10.1"
     # The TS 7 CLI uses Go; leave room for Node and Turbopack in the same pod.
     GOMAXPROCS: "2"
     GOMEMLIMIT: 1GiB
@@ -10,12 +19,29 @@
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl python3 gnupg unzip
       ca-certificates
     - !reference [.ajrly_source, before_script]
+    - >-
+      test -n "$AJRLY_TEMPLATES_REF" &&
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      "http://192.168.68.12/api/v4/projects/1/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF"
+      --output /tmp/ajrly-dependency-cache.py
+    - |
+      if [ -n "${AJRLY_NPM_REGISTRY:-}" ]; then
+        python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
+      elif [ -n "${AJRLY_NPM_INSTALL_TOKEN:-}" ]; then
+        echo "dependency-cache: AJRLY_NPM_INSTALL_TOKEN set without AJRLY_NPM_REGISTRY" >&2
+        exit 1
+      elif [ -n "${NPM_TOKEN:-}" ]; then
+        bash scripts/ci/npm-registry-auth.sh
+      fi
     - curl --fail --silent --show-error --location https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.10.1.tgz
       | tar -xz --strip-components=1 -C /usr/local/bin package/pnpm
     - pnpm --version && node --version
-    - if [ -n "${NPM_TOKEN:-}" ]; then bash scripts/ci/npm-registry-auth.sh; fi
     - export CI_JOB_TMPDIR="$CI_PROJECT_DIR/.ci-tmp/$CI_JOB_ID"; mkdir -p "$CI_JOB_TMPDIR"
     - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+    - |
+      # Exact-source verification completed above (GIT_STRATEGY=none). Key/restore only
+      # after checkout. No GitLab archive key-files. Ordinary jobs never upload canonical archives.
+      python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}"
     - export TURBO_CACHE=local:rw; unset TURBO_TOKEN; if [ -n "${TURBO_API:-}" ] && [ -n "${TURBO_CACHE_READ_TOKEN:-}"
       ]; then export TURBO_TOKEN="$TURBO_CACHE_READ_TOKEN" TURBO_CACHE=local:rw,remote:r; fi
   extends:

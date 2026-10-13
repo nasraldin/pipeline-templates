@@ -14,7 +14,13 @@ request complete source history to find the verified target merge base. A dedica
 The coordination project must be on this project's CI job-token allowlist.
 
 `common/` defines verified checkout, Node 26.11.1 / pnpm 12.10.1, and bounded
-resources. `checks/`, `tests/`, and `build/` run existing monorepo commands.
+resources. After exact-source checkout, `.node` may restore a verified pnpm
+store from the canonical S3 prefix when `AJRLY_DEPENDENCY_CACHE_ENABLED=true`
+and read-only cache credentials are present. Defaults keep public npm and
+cache restore disabled until root verifies private registry/scopes. Ordinary
+jobs never upload canonical archives; `publish_store` is a pure library for
+the protected platform producer. `checks/`, `tests/`, and `build/` run existing
+monorepo commands.
 Integration PostGIS and Redis are disposable containers in the job pod and use
 localhost. `security/` provides opt-in scanning through `RUN_SECURITY` (enabled
 by default). `quality/`, `images/`, and `release/` are restricted to a separate
