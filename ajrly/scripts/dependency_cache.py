@@ -234,6 +234,15 @@ def _safe_member_path(name: str) -> Path:
     return Path(*parts)
 
 
+def _is_within_directory(path: Path, root: Path) -> bool:
+    """Reject path-prefix tricks (``/tmp/a`` must not accept ``/tmp/a-evil``)."""
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
 def _validate_member(member: tarfile.TarInfo) -> Path:
     relative = _safe_member_path(member.name)
     if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
@@ -258,27 +267,32 @@ def _validate_member(member: tarfile.TarInfo) -> Path:
 
 def _extract_verified(archive_path: Path, destination: Path, *, expected_expanded: int) -> int:
     destination.mkdir(parents=True, exist_ok=True)
+    destination_resolved = destination.resolve(strict=False)
     expanded = 0
     with tarfile.open(archive_path, mode="r:gz") as tar:
         for member in tar.getmembers():
             relative = _validate_member(member)
-            if member.isfile():
-                expanded += int(member.size)
-                if expected_expanded and expanded > expected_expanded:
-                    raise ValueError("expanded_mismatch")
             target = destination / relative
+            if not _is_within_directory(target, destination):
+                raise ValueError("unsafe_archive_member")
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             if member.issym():
+                # Symlinks are recorded but must not escape the extract root.
+                link = Path(member.linkname)
+                if link.is_absolute() or ".." in link.parts:
+                    raise ValueError("unsafe_archive_member")
+                if not _is_within_directory(target.parent / link, destination):
+                    raise ValueError("unsafe_archive_member")
                 if target.exists() or target.is_symlink():
                     target.unlink()
                 target.symlink_to(member.linkname)
                 continue
             if member.islnk():
                 link_target = destination / _safe_member_path(member.linkname)
-                if not str(link_target.resolve()).startswith(str(destination.resolve())):
+                if not _is_within_directory(link_target, destination):
                     raise ValueError("unsafe_archive_member")
                 if not link_target.exists():
                     raise ValueError("unsafe_archive_member")
@@ -287,23 +301,58 @@ def _extract_verified(archive_path: Path, destination: Path, *, expected_expande
             source = tar.extractfile(member)
             if source is None:
                 raise ValueError("unsafe_archive_member")
+            # Count *actual* bytes written; never trust member.size alone (tar bombs).
+            written = 0
             with source, target.open("wb") as handle:
-                shutil.copyfileobj(source, handle, length=1024 * 1024)
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    expanded += len(chunk)
+                    if expanded > expected_expanded:
+                        raise ValueError("expanded_mismatch")
+                    handle.write(chunk)
+            if written != int(member.size):
+                raise ValueError("expanded_mismatch")
             mode = member.mode & 0o755
             if mode:
                 target.chmod(mode)
-    if expected_expanded and expanded != expected_expanded:
+    if expanded != expected_expanded:
         raise ValueError("expanded_mismatch")
+    # Final promotion guard: every extracted path must remain under destination.
+    for path in destination.rglob("*"):
+        if not _is_within_directory(path, destination_resolved):
+            raise ValueError("unsafe_archive_member")
     return expanded
 
 
 def _read_manifest(reader: S3Reader, key: str, prefix: str) -> dict:
     raw = reader.fetch_bytes(manifest_object_key(key, prefix))
     manifest = json.loads(raw.decode("utf-8"))
+    required = (
+        "schema", "key", "toolchain", "scope", "created_at",
+        "archive_sha256", "compressed_bytes", "expanded_bytes",
+    )
+    missing = [field for field in required if field not in manifest]
+    if missing:
+        raise ValueError("corrupt_manifest")
     if int(manifest.get("schema", -1)) != CACHE_SCHEMA:
         raise ValueError("unsupported_manifest_schema")
     if manifest.get("key") != key:
         raise ValueError("manifest_key_mismatch")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("archive_sha256", ""))):
+        raise ValueError("corrupt_manifest")
+    if not isinstance(manifest.get("toolchain"), dict):
+        raise ValueError("corrupt_manifest")
+    try:
+        created_at = float(manifest["created_at"])
+        compressed = int(manifest["compressed_bytes"])
+        expanded = int(manifest["expanded_bytes"])
+    except (TypeError, ValueError) as error:
+        raise ValueError("corrupt_manifest") from error
+    if created_at <= 0 or compressed <= 0 or expanded < 0:
+        raise ValueError("corrupt_manifest")
     return manifest
 
 
@@ -388,8 +437,21 @@ def restore_store(
         store = root / STORE_DIRNAME
         final_staging = root / f".{STORE_DIRNAME}.promoting"
         _cleanup(final_staging)
+        # Refuse to promote if staging escaped the extract root (symlink tricks).
+        extract_resolved = extract_dir.resolve(strict=False)
+        for path in extract_dir.rglob("*"):
+            if not _is_within_directory(path, extract_resolved):
+                _cleanup(staging)
+                return RestoreResult(
+                    "rejected", written, time.monotonic() - started, "unsafe_archive_member",
+                )
         shutil.move(str(extract_dir), str(final_staging))
-        _cleanup(store)
+        if store.exists() or store.is_symlink():
+            if store.is_symlink() or store.is_file():
+                store.unlink()
+            else:
+                # Never follow a pre-existing store symlink into attacker-controlled paths.
+                shutil.rmtree(store)
         os.replace(final_staging, store)
         _cleanup(staging)
         return RestoreResult("hit", written, time.monotonic() - started, "")

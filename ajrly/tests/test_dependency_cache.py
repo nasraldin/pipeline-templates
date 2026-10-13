@@ -207,6 +207,66 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertFalse((self.root / "escape.txt").exists())
         self.assertFalse((self.root / ".pnpm-store").exists())
 
+    def test_reject_hardlink_prefix_bypass_and_zero_expanded_tar_bomb(self):
+        key = self._key()
+        # Hardlink target path that shares a string prefix with the extract root.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            body = b"ok"
+            info = tarfile.TarInfo(name="ok")
+            info.size = len(body)
+            tar.addfile(info, io.BytesIO(body))
+            link = tarfile.TarInfo(name="evil-link")
+            link.type = tarfile.LNKTYPE
+            # Absolute-looking relative escape rejected by safe path; use .. form.
+            link.linkname = "../escape-target"
+            tar.addfile(link)
+        archive = buf.getvalue()
+        reader = MemoryS3({
+            self.mod.manifest_object_key(key): json.dumps(
+                self._manifest(key, archive, expanded=len(b"ok"))
+            ).encode(),
+            self.mod.archive_object_key(key): archive,
+        })
+        before = dict(reader.objects)
+        result = self.mod.restore_store(self.root, key, reader, scope="full", toolchain=self.toolchain)
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.reason, "unsafe_archive_member")
+        self.assertEqual(reader.objects, before)
+
+        # Manifest claims expanded_bytes=0 but archive contains file bytes.
+        bomb = self._store_bytes({"secret": b"payload-bytes"})
+        reader = MemoryS3({
+            self.mod.manifest_object_key(key): json.dumps(
+                self._manifest(key, bomb, expanded=0)
+            ).encode(),
+            self.mod.archive_object_key(key): bomb,
+        })
+        before = dict(reader.objects)
+        result = self.mod.restore_store(self.root, key, reader, scope="full", toolchain=self.toolchain)
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.reason, "expanded_mismatch")
+        self.assertEqual(reader.objects, before)
+        self.assertFalse((self.root / ".pnpm-store").exists())
+
+    def test_reject_incomplete_manifest_fields(self):
+        key = self._key()
+        archive = self._store_bytes({"ok": b"data"})
+        incomplete = {
+            "schema": 1,
+            "key": key,
+            # missing toolchain/scope/created_at/expanded
+            "archive_sha256": hashlib.sha256(archive).hexdigest(),
+            "compressed_bytes": len(archive),
+        }
+        reader = MemoryS3({
+            self.mod.manifest_object_key(key): json.dumps(incomplete).encode(),
+            self.mod.archive_object_key(key): archive,
+        })
+        result = self.mod.restore_store(self.root, key, reader, scope="full", toolchain=self.toolchain)
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.reason, "corrupt_manifest")
+
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
             link = tarfile.TarInfo(name="link")
