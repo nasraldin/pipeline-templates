@@ -66,6 +66,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(env.get("GOMEMLIMIT"), "1GiB")
         self.assertEqual(env.get("PNPM_CONFIG_NETWORK_CONCURRENCY"), "4")
         self.assertEqual(env.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
+        self.assertEqual(env.get("AJRLY_TURBO_BROKER_ENABLED"), "false")
+        self.assertEqual(env.get("AJRLY_TURBO_WRITE_ENABLED"), "false")
         self.assertNotIn("cache", self.pipeline[".node"])
 
     def test_resource_profiles_bound_builds(self):

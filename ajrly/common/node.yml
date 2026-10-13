@@ -12,6 +12,11 @@
     AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
     AJRLY_NODE_VERSION: "26.11.1"
     AJRLY_PNPM_VERSION: "12.10.1"
+    # Turbo authority broker (proxy grants). Off until root canary; never point at
+    # upstream writer. Writes remain separately gated.
+    AJRLY_TURBO_BROKER_ENABLED: "false"
+    AJRLY_TURBO_WRITE_ENABLED: "false"
+    AJRLY_TURBO_BROKER_URL: "http://ci-cache-authority.gitlab-runners.svc.cluster.local:8090"
     # The TS 7 CLI uses Go; leave room for Node and Turbopack in the same pod.
     GOMAXPROCS: "2"
     GOMEMLIMIT: 1GiB
@@ -42,8 +47,22 @@
       # Exact-source verification completed above (GIT_STRATEGY=none). Key/restore only
       # after checkout. No GitLab archive key-files. Ordinary jobs never upload canonical archives.
       python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}"
-    - export TURBO_CACHE=local:rw; unset TURBO_TOKEN; if [ -n "${TURBO_API:-}" ] && [ -n "${TURBO_CACHE_READ_TOKEN:-}"
-      ]; then export TURBO_TOKEN="$TURBO_CACHE_READ_TOKEN" TURBO_CACHE=local:rw,remote:r; fi
+    - >-
+      test -n "$AJRLY_TEMPLATES_REF" &&
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      "http://192.168.68.12/api/v4/projects/1/repository/files/ajrly%2Fscripts%2Fturbo_cache_broker.py/raw?ref=$AJRLY_TEMPLATES_REF"
+      --output /tmp/ajrly-turbo-cache-broker.py
+    - |
+      # Turbo remote cache only via authority proxy after exact checkout. Default off.
+      # Never export upstream writer credentials into the job.
+      export TURBO_CACHE=local:rw
+      unset TURBO_TOKEN TURBO_CACHE_READ_TOKEN TURBO_CACHE_TOKEN || true
+      if [ "${AJRLY_TURBO_BROKER_ENABLED:-false}" = "true" ]; then
+        eval "$(python3 /tmp/ajrly-turbo-cache-broker.py configure)"
+      elif [ -n "${TURBO_API:-}" ] && [ -n "${TURBO_CACHE_READ_TOKEN:-}" ]; then
+        # Legacy gated path retained until broker canary; still no writer token.
+        export TURBO_TOKEN="$TURBO_CACHE_READ_TOKEN" TURBO_CACHE=local:rw,remote:r
+      fi
   extends:
     - .ajrly_source
     - .ajrly_build_resources
