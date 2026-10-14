@@ -1,0 +1,118 @@
+# Dedicated project-7 include ONLY (`codex/ci-cache-final-acceptance`).
+# Do NOT include from default/global CI or merge to templates main without review.
+#
+# Full checks-mode Ajrly graph (19 jobs) with approved cache contracts enabled
+# only on this coordinator. Metrics target: normal apps API job wall ≤1144s
+# (baseline pipeline 439 ≈1454s). Scoped-install canary is NOT this metric.
+#
+# Gates stay distinct:
+#   dependency — AJRLY_DEPENDENCY_CACHE_ENABLED (canonical key 60b2 read)
+#   turbo      — broker default false until root write commission + allowlist
+#   buildkit   — image-build remains trusted+manual (AJRLY_BUILDKIT_READY)
+#
+# Source: pin PR171 HEAD when Docker owner finishes; until 288c18 is cherry-picked
+# into PR171, scoped helper root filter is absent on SOURCE — production jobs
+# still call scripts/pnpm-install-scoped.mjs from the pinned source SHA.
+
+include:
+  - local: ajrly/common/source.yml
+  - local: ajrly/common/resources.yml
+  - local: ajrly/common/node.yml
+  - local: ajrly/checks/monorepo.yml
+  - local: ajrly/tests/monorepo.yml
+  - local: ajrly/build/monorepo.yml
+  - local: ajrly/security/monorepo.yml
+
+# Quality/images/release stay out of checks-mode final acceptance (trusted-only).
+
+stages:
+  - validate
+  - integration
+  - analysis
+  - metrics
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "codex/ci-cache-final-acceptance"
+    - if: $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "trigger"
+    - when: never
+
+default:
+  image:
+    name: $AJRLY_CI_TOOLS_NODE_IMAGE
+    pull_policy: if-not-present
+  interruptible: true
+  tags:
+    - ajrly-kubernetes
+  timeout: 45m
+
+variables:
+  GIT_DEPTH: "0"
+  NODE_OPTIONS: --max-old-space-size=2048
+  JEST_MAX_WORKERS: "1"
+  npm_config_child_concurrency: "1"
+  GIT_STRATEGY: none
+  AJRLY_PIPELINE_MODE: checks
+  RUN_SECURITY: "true"
+  AJRLY_TEMPLATES_PROJECT_ID: "1"
+  # Harbor maintenance Node (exact registry digest).
+  AJRLY_CI_TOOLS_NODE_IMAGE: >-
+    harbor.ajrly.com/infra/ci-tools/node@sha256:7a5a6894d32a279390b9c27a16feee922297a0e942b3c6e3900e11b0becee899
+  AJRLY_NODE_VERSION: "26.11.1"
+  AJRLY_PNPM_VERSION: "12.10.1"
+  # Private npm + canonical pnpm store restore (reader/installer mapped on project 7).
+  AJRLY_NPM_REGISTRY: https://npm.ajrly.com/
+  PNPM_CONFIG_REGISTRY: https://npm.ajrly.com/
+  AJRLY_DEPENDENCY_CACHE_ENABLED: "true"
+  AJRLY_DEPENDENCY_CACHE_PREFIX: "canonical/"
+  AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
+  # Turbo: job-local refresh ready in broker code; write stays false until root commission.
+  AJRLY_TURBO_BROKER_ENABLED: "false"
+  AJRLY_TURBO_WRITE_ENABLED: "false"
+  AJRLY_TURBO_BROKER_URL: "http://ci-cache-authority.gitlab-runners.svc.cluster.local:8090"
+  AJRLY_BUILDKIT_READY: "false"
+  AJRLY_TRIVY_FEED_ENABLED: "false"
+  AJRLY_TRIVY_FEED_MAX_AGE_SECONDS: "86400"
+  # Source pins are set by the project-7 coordinator commit (immutable).
+  AJRLY_SOURCE_REPOSITORY: nasraldin/ajrly-platform
+  AJRLY_EVENT: push
+  AJRLY_EVENT_ID: ci-cache-final-acceptance
+
+# Explicit gate markers (artifacts only — no silent enable).
+cache-gate-manifest:
+  stage: metrics
+  image:
+    name: $AJRLY_CI_TOOLS_NODE_IMAGE
+    pull_policy: if-not-present
+  tags: [ajrly-kubernetes]
+  needs:
+    - job: "apps: [apps/backend/api, test:coverage, api]"
+      artifacts: false
+  script:
+    - |
+      set -euo pipefail
+      mkdir -p .ci-tmp
+      cat > .ci-tmp/cache-gate-manifest.json <<EOF
+      {
+        "dependency_cache_enabled": "${AJRLY_DEPENDENCY_CACHE_ENABLED}",
+        "turbo_broker_enabled": "${AJRLY_TURBO_BROKER_ENABLED}",
+        "turbo_write_enabled": "${AJRLY_TURBO_WRITE_ENABLED}",
+        "buildkit_ready": "${AJRLY_BUILDKIT_READY}",
+        "npm_registry": "${AJRLY_NPM_REGISTRY}",
+        "templates_ref": "${AJRLY_TEMPLATES_REF}",
+        "source_sha": "${AJRLY_SOURCE_SHA}",
+        "harbor_node_image": "${AJRLY_CI_TOOLS_NODE_IMAGE}",
+        "canonical_key_prefix": "dep-v1-60b2",
+        "api_wall_target_s": 1144,
+        "api_wall_baseline_439_s": 1454.778599,
+        "metric": "apps_api_job_wall_only",
+        "scoped_install_canary_excluded": true
+      }
+      EOF
+      python3 -c "import json;print(json.load(open('.ci-tmp/cache-gate-manifest.json'))['metric'])"
+      echo "final-acceptance gates dependency=${AJRLY_DEPENDENCY_CACHE_ENABLED} turbo=${AJRLY_TURBO_BROKER_ENABLED}/${AJRLY_TURBO_WRITE_ENABLED} buildkit=${AJRLY_BUILDKIT_READY}"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - .ci-tmp/cache-gate-manifest.json

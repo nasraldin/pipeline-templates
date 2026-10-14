@@ -788,12 +788,15 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertNotIn("publish_store", script)
         self.assertNotRegex(script, r"(?m)^\s*python3 .*\bpublish\b")
         variables = node["variables"]
-        self.assertEqual(variables.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
-        self.assertIn("AJRLY_DEPENDENCY_CACHE_PREFIX", variables)
-        self.assertEqual(variables["AJRLY_DEPENDENCY_CACHE_PREFIX"], "canonical/")
-        # Cutover gated: public registry remains default; private is opt-in.
-        self.assertEqual(variables["PNPM_CONFIG_REGISTRY"], "https://registry.npmjs.org/")
-        self.assertEqual(variables.get("AJRLY_NPM_REGISTRY", ""), "")
+        # Feature flags live on pipeline.yml so project-7 canaries can override.
+        self.assertNotIn("AJRLY_DEPENDENCY_CACHE_ENABLED", variables)
+        self.assertNotIn("AJRLY_DEPENDENCY_CACHE_PREFIX", variables)
+        self.assertNotIn("PNPM_CONFIG_REGISTRY", variables)
+        pipeline_vars = yaml.load(PIPELINE_YML.read_text(), Loader=GitLabLoader)["variables"]
+        self.assertEqual(pipeline_vars.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
+        self.assertEqual(pipeline_vars["AJRLY_DEPENDENCY_CACHE_PREFIX"], "canonical/")
+        self.assertEqual(pipeline_vars["PNPM_CONFIG_REGISTRY"], "https://registry.npmjs.org/")
+        self.assertEqual(pipeline_vars.get("AJRLY_NPM_REGISTRY", ""), "")
         self.assertNotIn("AJRLY_CI_TOOL_IMAGE_DIGEST", variables)
         self.assertEqual(variables.get("PNPM_CONFIG_NETWORK_CONCURRENCY"), "4")
 
@@ -880,10 +883,12 @@ class DependencyCacheTests(unittest.TestCase):
         pipeline_text = PIPELINE_YML.read_text()
         self.assertNotIn("node-cache-consumer.yml", pipeline_text)
         self.assertNotIn("canary/node-cache-consumer", pipeline_text)
-        # Default .node remains gated off after canary addition.
+        # Default pipeline flags remain gated off after canary addition.
         node_vars = yaml.load(NODE_YML.read_text(), Loader=GitLabLoader)[".node"]["variables"]
-        self.assertEqual(node_vars["AJRLY_DEPENDENCY_CACHE_ENABLED"], "false")
-        self.assertEqual(node_vars.get("AJRLY_NPM_REGISTRY", ""), "")
+        self.assertNotIn("AJRLY_DEPENDENCY_CACHE_ENABLED", node_vars)
+        pipeline_vars = yaml.load(PIPELINE_YML.read_text(), Loader=GitLabLoader)["variables"]
+        self.assertEqual(pipeline_vars["AJRLY_DEPENDENCY_CACHE_ENABLED"], "false")
+        self.assertEqual(pipeline_vars.get("AJRLY_NPM_REGISTRY", ""), "")
         self.assertNotIn("AJRLY_CI_TOOL_IMAGE_DIGEST", node_vars)
 
 class JobInstallScopeTests(unittest.TestCase):

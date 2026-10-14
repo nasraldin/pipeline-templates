@@ -33,3 +33,23 @@ variables:
   GIT_STRATEGY: none
   AJRLY_PIPELINE_MODE: checks
   RUN_SECURITY: "true"
+  # Approved cache-contract defaults (fail-closed). Dedicated canaries override
+  # these YAML globals; do not set project-wide CI/CD flags that affect all branches.
+  PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+  AJRLY_NPM_REGISTRY: ""
+  AJRLY_DEPENDENCY_CACHE_ENABLED: "false"
+  AJRLY_DEPENDENCY_CACHE_ENDPOINT: ""
+  AJRLY_DEPENDENCY_CACHE_BUCKET: ""
+  AJRLY_DEPENDENCY_CACHE_PREFIX: "canonical/"
+  AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
+  AJRLY_TURBO_BROKER_ENABLED: "false"
+  AJRLY_TURBO_WRITE_ENABLED: "false"
+  AJRLY_TURBO_BROKER_URL: "http://ci-cache-authority.gitlab-runners.svc.cluster.local:8090"
+  # Harbor maintenance Node image (digest). Ordinary pipeline still defaults to
+  # public node:26.11.1-bookworm above; final-acceptance canary overrides image.
+  AJRLY_CI_TOOLS_NODE_IMAGE: >-
+    harbor.ajrly.com/infra/ci-tools/node@sha256:7a5a6894d32a279390b9c27a16feee922297a0e942b3c6e3900e11b0becee899
+  # Trivy CI feed: never reuse GitLab job/task artifacts for DB. Optional
+  # persistent readonly feed is validated by security_feed.py (max age 24h).
+  AJRLY_TRIVY_FEED_ENABLED: "false"
+  AJRLY_TRIVY_FEED_MAX_AGE_SECONDS: "86400"

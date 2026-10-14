@@ -422,11 +422,15 @@ class TurboBrokerTests(unittest.TestCase):
         text = (ROOT / "common" / "node.yml").read_text()
         node = yaml.load(text, Loader=GitLabLoader)
         variables = node[".node"]["variables"]
-        self.assertEqual(variables.get("AJRLY_TURBO_BROKER_ENABLED"), "false")
-        self.assertEqual(variables.get("AJRLY_TURBO_WRITE_ENABLED"), "false")
+        # Broker flags are pipeline-level (overridable by dedicated canaries).
+        self.assertNotIn("AJRLY_TURBO_BROKER_ENABLED", variables)
+        pipeline = yaml.load((ROOT / "pipeline.yml").read_text(), Loader=GitLabLoader)
+        pipeline_vars = pipeline["variables"]
+        self.assertEqual(pipeline_vars.get("AJRLY_TURBO_BROKER_ENABLED"), "false")
+        self.assertEqual(pipeline_vars.get("AJRLY_TURBO_WRITE_ENABLED"), "false")
         self.assertIn(
             "ci-cache-authority.gitlab-runners.svc",
-            variables.get("AJRLY_TURBO_BROKER_URL", ""),
+            pipeline_vars.get("AJRLY_TURBO_BROKER_URL", ""),
         )
         # Exact checkout (.ajrly_source) precedes broker configure.
         self.assertIn("!reference [.ajrly_source, before_script]", text)

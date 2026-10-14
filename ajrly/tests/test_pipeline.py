@@ -65,10 +65,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(env.get("GOMAXPROCS"), "2")
         self.assertEqual(env.get("GOMEMLIMIT"), "1GiB")
         self.assertEqual(env.get("PNPM_CONFIG_NETWORK_CONCURRENCY"), "4")
-        self.assertEqual(env.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
-        self.assertEqual(env.get("AJRLY_TURBO_BROKER_ENABLED"), "false")
-        self.assertEqual(env.get("AJRLY_TURBO_WRITE_ENABLED"), "false")
+        # Feature flags are pipeline-level so project-7 canaries can override.
+        self.assertNotIn("AJRLY_DEPENDENCY_CACHE_ENABLED", env)
+        self.assertNotIn("AJRLY_TURBO_BROKER_ENABLED", env)
+        globals_env = self.pipeline["variables"]
+        self.assertEqual(globals_env.get("AJRLY_DEPENDENCY_CACHE_ENABLED"), "false")
+        self.assertEqual(globals_env.get("AJRLY_TURBO_BROKER_ENABLED"), "false")
+        self.assertEqual(globals_env.get("AJRLY_TURBO_WRITE_ENABLED"), "false")
         self.assertNotIn("cache", self.pipeline[".node"])
+
+    def test_final_acceptance_canary_enables_contracts_without_writers(self):
+        path = ROOT / "canary" / "ci-cache-final-acceptance.yml"
+        self.assertTrue(path.is_file())
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("AJRLY_DEPENDENCY_CACHE_ENABLED: \"true\"", text)
+        self.assertIn("AJRLY_TURBO_WRITE_ENABLED: \"false\"", text)
+        self.assertIn("AJRLY_BUILDKIT_READY: \"false\"", text)
+        self.assertIn("codex/ci-cache-final-acceptance", text)
+        self.assertIn("sha256:7a5a6894d32a279390b9c27a16feee922297a0e942b3c6e3900e11b0becee899", text)
+        self.assertNotIn("ajrly/quality/sonar.yml", text)
+        self.assertNotIn("ajrly/images/harbor.yml", text)
 
     def test_resource_profiles_bound_builds(self):
         variables = self.pipeline[".ajrly_build_resources"]["variables"]

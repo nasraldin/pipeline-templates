@@ -1,22 +1,11 @@
 .node:
   variables:
-    # Public dependency reads remain default until root verifies private npm + scopes.
-    PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    # Cache/npm/turbo feature flags live in pipeline.yml / canary top-level
+    # variables so dedicated project-7 coordinators can enable contracts without
+    # replacing this hidden job. Job-hardcoded false would beat YAML globals.
     PNPM_CONFIG_NETWORK_CONCURRENCY: "4"
-    # Gated cutover interfaces (empty/false until root enables after verification).
-    AJRLY_NPM_REGISTRY: ""
-    AJRLY_DEPENDENCY_CACHE_ENABLED: "false"
-    AJRLY_DEPENDENCY_CACHE_ENDPOINT: ""
-    AJRLY_DEPENDENCY_CACHE_BUCKET: ""
-    AJRLY_DEPENDENCY_CACHE_PREFIX: "canonical/"
-    AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
     AJRLY_NODE_VERSION: "26.11.1"
     AJRLY_PNPM_VERSION: "12.10.1"
-    # Turbo authority broker (proxy grants). Off until root canary; never point at
-    # upstream writer. Writes remain separately gated.
-    AJRLY_TURBO_BROKER_ENABLED: "false"
-    AJRLY_TURBO_WRITE_ENABLED: "false"
-    AJRLY_TURBO_BROKER_URL: "http://ci-cache-authority.gitlab-runners.svc.cluster.local:8090"
     # The TS 7 CLI uses Go; leave room for Node and Turbopack in the same pod.
     GOMAXPROCS: "2"
     GOMEMLIMIT: 1GiB

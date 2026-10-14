@@ -16,16 +16,19 @@ The coordination project must be on this project's CI job-token allowlist.
 `common/` defines verified checkout, Node 26.11.1 / pnpm 12.10.1, and bounded
 resources. After exact-source checkout, `.node` may restore a verified pnpm
 store from the canonical S3 prefix when `AJRLY_DEPENDENCY_CACHE_ENABLED=true`
-and read-only cache credentials are present. Defaults keep public npm and
-cache restore disabled until root verifies private registry/scopes. Ordinary
-jobs never upload canonical archives; `publish_store` is a pure library for
-the protected platform producer. Turbo remote cache defaults to local-only;
-`AJRLY_TURBO_BROKER_ENABLED` (default false) requests a short-lived grant from
-`ci-cache-authority` after exact checkout and points `TURBO_API` at the proxy
-only — never the upstream writer. Dedicated project-7 proof lives in
-`canary/node-cache-consumer.yml` (not included by `pipeline.yml`); it pins the
-Harbor maintenance tool image by registry digest and enables store restore only
-on canary jobs. `checks/`, `tests/`, and `build/` run existing monorepo commands.
+and read-only cache credentials are present. Feature-flag defaults live on
+`pipeline.yml` (public npm + cache/turbo off) so dedicated project-7 canaries can
+override without replacing `.node`. Ordinary jobs never upload canonical
+archives; `publish_store` is a pure library for the protected platform producer.
+Turbo remote cache defaults to local-only; `AJRLY_TURBO_BROKER_ENABLED` (default
+false) requests a short-lived grant from `ci-cache-authority` after exact
+checkout and points `TURBO_API` at the proxy only — never the upstream writer.
+`security:trivy` keeps `cache: []` (no task-artifact DB reuse); optional
+persistent feed provenance/24h freshness is enforced by `scripts/security_feed.py`.
+Dedicated project-7 proofs: `canary/node-cache-consumer.yml`,
+`canary/node-scoped-install.yml`, and `canary/ci-cache-final-acceptance.yml`
+(full 19-job checks graph + Harbor digest; not included by `pipeline.yml`).
+`checks/`, `tests/`, and `build/` run existing monorepo commands.
 Integration PostGIS and Redis are disposable containers in the job pod and use
 localhost. `security/` provides opt-in scanning through `RUN_SECURITY` (enabled
 by default). `quality/`, `images/`, and `release/` are restricted to a separate
