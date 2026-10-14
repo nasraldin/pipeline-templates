@@ -609,6 +609,11 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertIn("local_store_warm_not_persistent", install_script)
         self.assertIn("persistent_canonical_restore", install_script)
         self.assertNotIn("publish_store", install_script)
+        # libc/arch probes must register importlib module before exec (dataclasses).
+        libc_script = "\n".join(str(s) for s in data["node-cache-canary-invalidate-libc"]["script"])
+        arch_script = "\n".join(str(s) for s in data["node-cache-canary-invalidate-arch"]["script"])
+        self.assertIn("sys.modules[spec.name] = mod", libc_script)
+        self.assertIn("sys.modules[spec.name] = mod", arch_script)
         # Must not be wired into the default reusable pipeline.
         pipeline_text = PIPELINE_YML.read_text()
         self.assertNotIn("node-cache-consumer.yml", pipeline_text)

@@ -276,10 +276,12 @@ node-cache-canary-invalidate-libc:
     - |
       set -euo pipefail
       python3 - <<'PY'
-      import importlib.util, pathlib, unittest.mock as mock
+      import importlib.util, pathlib, sys, unittest.mock as mock
       path = pathlib.Path("/tmp/ajrly-dependency-cache.py")
       spec = importlib.util.spec_from_file_location("dep_cache", path)
       mod = importlib.util.module_from_spec(spec)
+      # dataclasses require the module to be registered before exec_module.
+      sys.modules[spec.name] = mod
       spec.loader.exec_module(mod)
       root = pathlib.Path(".").resolve()
       toolchain = mod.toolchain_from_env()
@@ -300,10 +302,12 @@ node-cache-canary-invalidate-arch:
     - |
       set -euo pipefail
       python3 - <<'PY'
-      import importlib.util, pathlib, unittest.mock as mock
+      import importlib.util, pathlib, sys, unittest.mock as mock
       path = pathlib.Path("/tmp/ajrly-dependency-cache.py")
       spec = importlib.util.spec_from_file_location("dep_cache", path)
       mod = importlib.util.module_from_spec(spec)
+      # dataclasses require the module to be registered before exec_module.
+      sys.modules[spec.name] = mod
       spec.loader.exec_module(mod)
       root = pathlib.Path(".").resolve()
       toolchain = mod.toolchain_from_env()
