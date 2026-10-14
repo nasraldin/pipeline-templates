@@ -103,15 +103,18 @@ variables:
       --output /tmp/ajrly-dependency-cache.py
     - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
     - |
-      # Prefer the same internal HTTP API host used for script curl fetch.
-      # Cluster CI_API_V4_URL is often https://gitlab.nasraldin.com and unreachable
-      # from runner pods (errno 101); do not treat that as a store/write failure.
-      export CI_API_V4_URL="${AJRLY_GITLAB_API_V4_URL:-http://192.168.68.12/api/v4}"
-      META=$(python3 /tmp/ajrly-dependency-cache.py file-metadata --ref "$AJRLY_TEMPLATES_REF" --script dependency_cache.py)
-      echo "$META" | tee /tmp/ajrly-dependency-cache.meta.json
+      # Metadata via the same internal HTTP + JOB-TOKEN curl path as script fetch.
+      # Python urllib against CI_API_V4_URL (https public) is unreachable; against
+      # internal API with JOB-TOKEN has returned 404 for cross-project file metadata.
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+        "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py?ref=$AJRLY_TEMPLATES_REF" \
+        --output /tmp/ajrly-dependency-cache.meta.json
+      echo "$(cat /tmp/ajrly-dependency-cache.meta.json)" | tee /tmp/ajrly-dependency-cache.meta.tee.json >/dev/null
       LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
       SERVER_SHA=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['content_sha256'])")
+      SERVER_COMMIT=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['commit_id'])")
       test "$LOCAL_SHA" = "$SERVER_SHA"
+      test "$SERVER_COMMIT" = "$AJRLY_TEMPLATES_REF"
     - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
     - test -f "$CI_PROJECT_DIR/.ajrly-source.json"
     - test "$(python3 -c "import json;print(json.load(open('.ajrly-source.json'))['sha'])")" = "$AJRLY_SOURCE_SHA"
