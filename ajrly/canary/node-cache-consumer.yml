@@ -109,20 +109,24 @@ variables:
       --output /tmp/ajrly-source.py
     - >-
       curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      -D /tmp/ajrly-dependency-cache.headers
       "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF"
       --output /tmp/ajrly-dependency-cache.py
-    # Server metadata authority: reject branch drift / caller-written trust.
+    # Immutable 40-char pin only; reject mutable branch tips before any restore.
     - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
     - |
-      # Prefer the same internal HTTP API host used for script curl fetch.
-      # Cluster CI_API_V4_URL is often https://gitlab.nasraldin.com and unreachable
-      # from runner pods (errno 101).
-      export CI_API_V4_URL="${AJRLY_GITLAB_API_V4_URL:-http://192.168.68.12/api/v4}"
-      META=$(python3 /tmp/ajrly-dependency-cache.py file-metadata --ref "$AJRLY_TEMPLATES_REF" --script dependency_cache.py)
-      echo "$META" | tee /tmp/ajrly-dependency-cache.meta.json
-      LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
-      SERVER_SHA=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['content_sha256'])")
-      test "$LOCAL_SHA" = "$SERVER_SHA"
+      # Transport-bound /raw pin (JOB-TOKEN). Cross-project repository/files
+      # metadata JSON returns 404 under JOB-TOKEN on this GitLab — do NOT call
+      # file-metadata. Local content_sha256 is payload hash only, not server
+      # metadata authority. Response commit headers recorded when present.
+      mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+      python3 /tmp/ajrly-dependency-cache.py record-pinned-raw \
+        --ref "$AJRLY_TEMPLATES_REF" \
+        --path /tmp/ajrly-dependency-cache.py \
+        --script dependency_cache.py \
+        --response-headers /tmp/ajrly-dependency-cache.headers \
+        | tee "$CI_PROJECT_DIR/.ci-tmp/ajrly-dependency-cache.meta.json"
+      python3 -c "import json,os;m=json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/ajrly-dependency-cache.meta.json')); assert m['verify']=='transport_bound_pin' and m['server_metadata_authority'] is False, m"
     # Exact GitHub checkout BEFORE any dependency key/restore (GIT_STRATEGY=none).
     - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
     - test -f "$CI_PROJECT_DIR/.ajrly-source.json"

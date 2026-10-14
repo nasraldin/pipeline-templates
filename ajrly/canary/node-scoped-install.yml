@@ -6,12 +6,17 @@
 # when present without fabricating a full-scope job key.
 #
 # Pin AJRLY_TEMPLATES_REF at the project include to an immutable SHA that
-# contains --scope-from-job (profiler family 04736be+). Never override with a
+# contains --scope-from-job + transport-bound raw pin. Never override with a
 # mutable branch tip from job variables.
+#
+# Phases (sequential; max one heavy chain — no full monorepo pipeline):
+#   cold        — deliberately SKIP restore so miss is authentic (not a hit-as-cold)
+#   warm/warm2  — restore enabled; ≥2 warm measurements on same key
+#   sources-only — unrelated source edit must keep dependency key stable
 #
 # Acceptance labels (never fabricate a persistent hit):
 #   persistent_canonical_restore — verified S3 archive restore (producer present)
-#   miss_no_fabricated_hit — restore miss; cold install via private npm only
+#   miss_no_fabricated_hit — restore miss / cold skip; install via private npm
 #   local_store_warm_not_persistent — same-job pnpm store reuse after miss
 # Canonical writer / store publish API is NEVER exposed here.
 
@@ -37,6 +42,11 @@ variables:
   AJRLY_DEPENDENCY_CACHE_SCOPE: full
   PROJECT_PATH: apps/backend/api
   GIT_STRATEGY: none
+  # Explicit controlled budget (build-class); no bigger VM / no fabrications.
+  KUBERNETES_CPU_REQUEST: 500m
+  KUBERNETES_CPU_LIMIT: "2"
+  KUBERNETES_MEMORY_REQUEST: 1920Mi
+  KUBERNETES_MEMORY_LIMIT: 4Gi
   KUBERNETES_EPHEMERAL_STORAGE_REQUEST: 2Gi
   KUBERNETES_EPHEMERAL_STORAGE_LIMIT: 8Gi
 
@@ -53,6 +63,7 @@ variables:
     GIT_STRATEGY: none
     AJRLY_TEMPLATES_PROJECT_ID: "1"
     AJRLY_DEPENDENCY_CACHE_ENABLED: "true"
+    AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE: "false"
     AJRLY_NPM_REGISTRY: https://npm.ajrly.com/
     PNPM_CONFIG_NETWORK_CONCURRENCY: "4"
     PROJECT_PATH: apps/backend/api
@@ -99,22 +110,22 @@ variables:
       --output /tmp/ajrly-source.py
     - >-
       curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      -D /tmp/ajrly-dependency-cache.headers
       "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF"
       --output /tmp/ajrly-dependency-cache.py
     - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
     - |
-      # Integrity via dual raw fetch (JOB-TOKEN can read /raw). Cross-project
-      # repository/files metadata JSON returns 404 under JOB-TOKEN on this GitLab;
-      # do not block scoped-install measurement on that API.
-      test -s /tmp/ajrly-dependency-cache.py
-      LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
-      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-        "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF" \
-        --output /tmp/ajrly-dependency-cache.py.recheck
-      RECHECK_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py.recheck | awk '{print $1}')
-      test "$LOCAL_SHA" = "$RECHECK_SHA"
-      echo "{\"ref\":\"$AJRLY_TEMPLATES_REF\",\"content_sha256\":\"$LOCAL_SHA\",\"verify\":\"dual_raw\"}" \
-        | tee /tmp/ajrly-dependency-cache.meta.json
+      # Transport-bound /raw pin only. Do not call file-metadata (JOB-TOKEN 404).
+      # Dual-raw recheck omitted by default (no duplicate network). Local hash is
+      # payload digest, not server metadata authority.
+      mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+      python3 /tmp/ajrly-dependency-cache.py record-pinned-raw \
+        --ref "$AJRLY_TEMPLATES_REF" \
+        --path /tmp/ajrly-dependency-cache.py \
+        --script dependency_cache.py \
+        --response-headers /tmp/ajrly-dependency-cache.headers \
+        | tee "$CI_PROJECT_DIR/.ci-tmp/ajrly-dependency-cache.meta.json"
+      python3 -c "import json,os;m=json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/ajrly-dependency-cache.meta.json')); assert m['verify']=='transport_bound_pin' and m['server_metadata_authority'] is False, m"
     - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
     - test -f "$CI_PROJECT_DIR/.ajrly-source.json"
     - test "$(python3 -c "import json;print(json.load(open('.ajrly-source.json'))['sha'])")" = "$AJRLY_SOURCE_SHA"
@@ -124,26 +135,29 @@ variables:
         python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
         export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
         pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
-        RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
-          --scope-from-job --json --phase "${NODE_CACHE_PHASE:-restore}" \
-          --configured-registry "${AJRLY_NPM_REGISTRY}")
-        echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
+        if [ "${AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE:-false}" = "true" ]; then
+          # Cold phase: deliberate skip so we do not mis-label a store hit as cold miss.
+          echo '{"status":"miss","reason":"cold_skip_restore","bytes":0,"restore_duration_s":0,"job_scope":"apps/backend/api","archive_scope":"","job_key":"","archive_key":""}' \
+            | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
+        else
+          RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
+            --scope-from-job --json --phase "${NODE_CACHE_PHASE:-restore}" \
+            --configured-registry "${AJRLY_NPM_REGISTRY}")
+          echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
+        fi
         export AJRLY_DEPENDENCY_CACHE_LAST_STATUS=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json'))['status'])")
         export AJRLY_DEPENDENCY_CACHE_LAST_REASON=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('reason',''))")
         export AJRLY_DEPENDENCY_CACHE_LAST_BYTES=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('bytes',0))")
         export AJRLY_DEPENDENCY_CACHE_LAST_DURATION=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('restore_duration_s',0))")
         export AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope-from-job)
         export AJRLY_DEPENDENCY_CACHE_LAST_KEY="$AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY"
-        export AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('job_scope',''))")
+        export AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('job_scope','') or 'apps/backend/api')")
         export AJRLY_DEPENDENCY_CACHE_LAST_ARCHIVE_SCOPE=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('archive_scope',''))")
         test "$AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE" = "apps/backend/api"
       fi
 
-node-scoped-install-canary-api:
+.node_scoped_install_run:
   extends: .node_scoped_install_base
-  variables:
-    NODE_CACHE_PHASE: scoped-api
-    PROJECT_PATH: apps/backend/api
   script:
     - mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
     - |
@@ -153,25 +167,27 @@ node-scoped-install-canary-api:
       JOB_SCOPE="${AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE:-}"
       ARCHIVE_SCOPE="${AJRLY_DEPENDENCY_CACHE_LAST_ARCHIVE_SCOPE:-}"
       test "$JOB_SCOPE" = "apps/backend/api"
+      if [ "$PHASE" = "cold" ]; then
+        test "$RESTORE_STATUS" = "miss"
+        test "${AJRLY_DEPENDENCY_CACHE_LAST_REASON:-}" = "cold_skip_restore"
+      fi
       # Caller AJRLY_DEPENDENCY_CACHE_SCOPE=full must not rewrite job_scope.
       if [ "$RESTORE_STATUS" = "hit" ] && [ "${AJRLY_DEPENDENCY_CACHE_LAST_REASON:-}" = "reused_full_archive" ]; then
         test "$ARCHIVE_SCOPE" = "full"
         test "$JOB_SCOPE" != "$ARCHIVE_SCOPE"
       fi
       START=$(date +%s)
-      # Workspace-closure install matching source scripts/pnpm-install-scoped.mjs contract:
-      # api... + root `.` toolchain. Inline filters so measurement works on trusted default
-      # source SHA before the source-branch helper is cherry-picked (no source push here).
-      # Prefer the helper when present (same filters); fall back to explicit pnpm filters.
-      if [ -f scripts/pnpm-install-scoped.mjs ]; then
-        # Helper may still be pre-root-filter on default source — force equivalent filters.
-        pnpm install --frozen-lockfile --filter api... --filter . \
-          --store-dir "$CI_PROJECT_DIR/.pnpm-store" \
-          2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-${PHASE}.log"
-      else
+      # Workspace-closure install matching source scripts/pnpm-install-scoped.mjs:
+      # api... + root `.` toolchain. Inline filters so measurement works on trusted
+      # default source SHA before the source-branch helper is cherry-picked.
+      # No --ignore-scripts: lifecycle hooks preserved.
+      if [ ! -f scripts/pnpm-install-scoped.mjs ]; then
         echo "node-scoped-install-canary: pnpm-install-scoped.mjs missing" >&2
         exit 1
       fi
+      pnpm install --frozen-lockfile --filter api... --filter . \
+        --store-dir "$CI_PROJECT_DIR/.pnpm-store" \
+        2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-${PHASE}.log"
       END=$(date +%s)
       ELAPSED=$((END - START))
       STORE_BYTES=$(du -sb "$CI_PROJECT_DIR/.pnpm-store" 2>/dev/null | awk '{print $1}')
@@ -180,7 +196,7 @@ node-scoped-install-canary-api:
       test "$REGISTRY" = "https://npm.ajrly.com/" -o "$REGISTRY" = "https://npm.ajrly.com"
       PROGRESS_LINE=$(grep -E 'Progress: resolved [0-9]+, reused [0-9]+, downloaded [0-9]+, added [0-9]+, done' \
         "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-${PHASE}.log" | tail -n1 || true)
-      # Validate binaries needed for API typecheck path.
+      # Validate SWC native binding (root toolchain filter).
       node -e "const t=require('@swc/core').getBinaryMetadata().target; if(!t) throw new Error('SWC missing'); console.log('SWC', t)"
       LOCAL_WARM_FLAG=""
       if [ "$RESTORE_STATUS" != "hit" ]; then
@@ -199,10 +215,21 @@ node-scoped-install-canary-api:
       # shellcheck disable=SC2086
       python3 /tmp/ajrly-dependency-cache.py "${REPORT_ARGS[@]}" $LOCAL_WARM_FLAG \
         | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-${PHASE}.json"
-      # Bounded single-job API typecheck (not whole-monorepo claim).
-      pnpm --filter api typecheck \
-        2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/api-typecheck-${PHASE}.log"
-      echo "node-scoped-install-canary phase=$PHASE job_scope=$JOB_SCOPE archive_scope=$ARCHIVE_SCOPE restore=$RESTORE_STATUS install_elapsed_s=$ELAPSED progress=${PROGRESS_LINE:-none}"
+      # Bounded API typecheck once (warm phase only) — real functional subset, not fake unit.
+      if [ "$PHASE" = "warm" ]; then
+        pnpm --filter api typecheck \
+          2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/api-typecheck-${PHASE}.log"
+      fi
+      # Capture resource env (requests/limits). Throttling/Prometheus only if present; never fabricate.
+      {
+        echo "cpu_request=${KUBERNETES_CPU_REQUEST:-}"
+        echo "cpu_limit=${KUBERNETES_CPU_LIMIT:-}"
+        echo "memory_request=${KUBERNETES_MEMORY_REQUEST:-}"
+        echo "memory_limit=${KUBERNETES_MEMORY_LIMIT:-}"
+        echo "ephemeral_request=${KUBERNETES_EPHEMERAL_STORAGE_REQUEST:-}"
+        echo "ephemeral_limit=${KUBERNETES_EPHEMERAL_STORAGE_LIMIT:-}"
+      } | tee "$CI_PROJECT_DIR/.ci-tmp/resource-budget-${PHASE}.txt"
+      echo "node-scoped-install-canary phase=$PHASE job_scope=$JOB_SCOPE archive_scope=$ARCHIVE_SCOPE restore=$RESTORE_STATUS reason=${AJRLY_DEPENDENCY_CACHE_LAST_REASON:-} install_elapsed_s=$ELAPSED store_bytes=$STORE_BYTES progress=${PROGRESS_LINE:-none}"
   artifacts:
     when: always
     expire_in: 3 days
@@ -211,3 +238,82 @@ node-scoped-install-canary-api:
       - .ci-tmp/dependency-phase-*.json
       - .ci-tmp/pnpm-install-*.log
       - .ci-tmp/api-typecheck-*.log
+      - .ci-tmp/resource-budget-*.txt
+      - .ci-tmp/ajrly-dependency-cache.meta.json
+
+# Cold: deliberate restore skip → authentic miss, then scoped install.
+node-scoped-install-canary-cold:
+  extends: .node_scoped_install_run
+  variables:
+    NODE_CACHE_PHASE: cold
+    AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE: "true"
+
+# Warm #1: restore enabled (canonical full archive reuse expected when present).
+node-scoped-install-canary-warm:
+  extends: .node_scoped_install_run
+  needs: [node-scoped-install-canary-cold]
+  variables:
+    NODE_CACHE_PHASE: warm
+    AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE: "false"
+
+# Warm #2: second warm measurement on same key.
+node-scoped-install-canary-warm2:
+  extends: .node_scoped_install_run
+  needs: [node-scoped-install-canary-warm]
+  variables:
+    NODE_CACHE_PHASE: warm2
+    AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE: "false"
+
+# Sources-only: unrelated source edit must keep the same dependency key.
+node-scoped-install-canary-sources-only:
+  extends: .node_scoped_install_base
+  needs: [node-scoped-install-canary-warm2]
+  variables:
+    NODE_CACHE_PHASE: sources-only
+    AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE: "false"
+  script:
+    - mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+    - |
+      set -euo pipefail
+      KEY_BEFORE=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope-from-job)
+      printf '\n# sources-only scoped canary marker %s\n' "$CI_JOB_ID" >> README.md
+      KEY_AFTER=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope-from-job)
+      test "$KEY_BEFORE" = "$KEY_AFTER"
+      test "$KEY_AFTER" = "${AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY}"
+      RESTORE_STATUS="${AJRLY_DEPENDENCY_CACHE_LAST_STATUS:-miss}"
+      START=$(date +%s)
+      pnpm install --frozen-lockfile --filter api... --filter . \
+        --store-dir "$CI_PROJECT_DIR/.pnpm-store" \
+        2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-sources-only.log"
+      END=$(date +%s)
+      ELAPSED=$((END - START))
+      STORE_BYTES=$(du -sb "$CI_PROJECT_DIR/.pnpm-store" 2>/dev/null | awk '{print $1}')
+      STORE_BYTES=${STORE_BYTES:-0}
+      REGISTRY=$(pnpm config get registry)
+      PROGRESS_LINE=$(grep -E 'Progress: resolved [0-9]+, reused [0-9]+, downloaded [0-9]+, added [0-9]+, done' \
+        "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-sources-only.log" | tail -n1 || true)
+      LOCAL_WARM_FLAG=""
+      if [ "$RESTORE_STATUS" != "hit" ]; then
+        LOCAL_WARM_FLAG="--local-store-warm"
+      fi
+      REPORT_ARGS=(
+        report --phase sources-only
+        --key "$KEY_AFTER"
+        --install-elapsed "$ELAPSED"
+        --configured-registry "$REGISTRY"
+        --store-bytes "$STORE_BYTES"
+      )
+      if [ -n "$PROGRESS_LINE" ]; then
+        REPORT_ARGS+=(--pnpm-progress "$PROGRESS_LINE")
+      fi
+      # shellcheck disable=SC2086
+      python3 /tmp/ajrly-dependency-cache.py "${REPORT_ARGS[@]}" $LOCAL_WARM_FLAG \
+        | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-sources-only.json"
+      echo "node-scoped-install-canary sources-only key_stable=1 restore=$RESTORE_STATUS install_elapsed_s=$ELAPSED store_bytes=$STORE_BYTES progress=${PROGRESS_LINE:-none}"
+  artifacts:
+    when: always
+    expire_in: 3 days
+    paths:
+      - .ci-tmp/dependency-restore.json
+      - .ci-tmp/dependency-phase-*.json
+      - .ci-tmp/pnpm-install-*.log

@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import time
 import unittest
+import urllib.error
 from typing import Dict, Optional
 from unittest import mock
 
@@ -296,6 +297,147 @@ class DependencyCacheTests(unittest.TestCase):
                 expected_ref=pin,
             )
         self.assertIn("templates_ref_metadata_mismatch", str(mismatch.exception))
+
+    def test_transport_bound_pin_records_local_hash_not_server_metadata_authority(self):
+        """/raw pin is transport-bound; never label local digest as server metadata proof."""
+        pin = "b318ecdf953767b2b7ac171b944a7646c37b250d"
+        path = pathlib.Path(tempfile.mkdtemp(prefix="pin-raw-")) / "dependency_cache.py"
+        self.addCleanup(lambda: shutil.rmtree(path.parent, ignore_errors=True))
+        body = b"#!/usr/bin/env python3\n# pinned helper body\n"
+        path.write_bytes(body)
+
+        record = self.mod.record_transport_bound_pin(path, pin)
+        self.assertEqual(record["ref"], pin)
+        self.assertEqual(record["verify"], "transport_bound_pin")
+        self.assertEqual(record["authority"], "immutable_git_ref_via_raw")
+        self.assertIs(record["server_metadata_authority"], False)
+        self.assertEqual(record["content_sha256"], hashlib.sha256(body).hexdigest())
+        self.assertEqual(record["bytes"], len(body))
+        self.assertFalse(record["response_headers_commit_bound"])
+
+        bound = self.mod.record_transport_bound_pin(
+            path, pin, response_headers={"X-Gitlab-Commit-Id": pin}
+        )
+        self.assertEqual(bound["response_commit_id"], pin)
+        self.assertTrue(bound["response_headers_commit_bound"])
+        self.assertIs(bound["server_metadata_authority"], False)
+
+        with self.assertRaises(ValueError) as mismatch:
+            self.mod.record_transport_bound_pin(
+                path, pin, response_headers={"X-Gitlab-Commit-Id": "a" * 40}
+            )
+        self.assertIn("templates_raw_commit_header_mismatch", str(mismatch.exception))
+
+        empty = path.parent / "empty.py"
+        empty.write_bytes(b"")
+        with self.assertRaises(ValueError) as empty_err:
+            self.mod.record_transport_bound_pin(empty, pin)
+        self.assertIn("templates_raw_empty_or_missing", str(empty_err.exception))
+
+        with self.assertRaises(ValueError) as mutable:
+            self.mod.record_transport_bound_pin(path, "codex/ci-cache-templates")
+        self.assertIn("templates_ref_not_immutable", str(mutable.exception))
+        with self.assertRaises(ValueError):
+            self.mod.record_transport_bound_pin(path, pin[:12])
+
+    def test_fetch_pinned_raw_uses_job_token_and_skips_duplicate_recheck_by_default(self):
+        pin = "b318ecdf953767b2b7ac171b944a7646c37b250d"
+        body = b"#!/usr/bin/env python3\nprint('ok')\n"
+        calls = []
+
+        class _Resp:
+            def __init__(self, payload: bytes):
+                self._payload = payload
+                self.headers = {"X-Gitlab-Commit-Id": pin}
+
+            def read(self):
+                return self._payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def opener(request, timeout=30):
+            calls.append(request)
+            self.assertEqual(request.get_header("Job-token"), "ci-job-token-fixture")
+            self.assertIn("/raw?", request.full_url)
+            self.assertIn(f"ref={pin}", request.full_url)
+            return _Resp(body)
+
+        dest = pathlib.Path(tempfile.mkdtemp(prefix="fetch-raw-")) / "dependency_cache.py"
+        self.addCleanup(lambda: shutil.rmtree(dest.parent, ignore_errors=True))
+        record = self.mod.fetch_templates_script_raw(
+            "http://192.168.68.12/api/v4/projects/1",
+            pin,
+            "dependency_cache.py",
+            job_token="ci-job-token-fixture",
+            destination=dest,
+            opener=opener,
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(record["recheck"])
+        self.assertEqual(record["verify"], "transport_bound_pin")
+        self.assertIs(record["server_metadata_authority"], False)
+        self.assertEqual(dest.read_bytes(), body)
+
+        record2 = self.mod.fetch_templates_script_raw(
+            "http://192.168.68.12/api/v4/projects/1",
+            pin,
+            "dependency_cache.py",
+            job_token="ci-job-token-fixture",
+            destination=dest,
+            opener=opener,
+            recheck=True,
+        )
+        self.assertEqual(len(calls), 3)  # 1 prior + 2 for recheck path
+        self.assertTrue(record2["recheck"])
+
+        def empty_opener(request, timeout=30):
+            return _Resp(b"")
+
+        with self.assertRaises(ValueError) as empty_err:
+            self.mod.fetch_templates_script_raw(
+                "http://192.168.68.12/api/v4/projects/1",
+                pin,
+                job_token="ci-job-token-fixture",
+                destination=dest,
+                opener=empty_opener,
+            )
+        self.assertIn("templates_raw_empty_or_missing", str(empty_err.exception))
+
+    def test_file_metadata_404_fixture_fails_closed_without_admin_token(self):
+        """Metadata 404 under JOB-TOKEN is real policy; fail closed, no token broaden."""
+        pin = "b318ecdf953767b2b7ac171b944a7646c37b250d"
+        seen = {}
+
+        def opener(request, timeout=30):
+            seen["url"] = request.full_url
+            seen["job_token"] = request.get_header("Job-token")
+            raise urllib.error.HTTPError(
+                request.full_url, 404, "Not Found", hdrs=None, fp=io.BytesIO(b"")
+            )
+
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            self.mod.fetch_templates_file_metadata(
+                "http://192.168.68.12/api/v4/projects/1",
+                pin,
+                "dependency_cache.py",
+                job_token="ci-job-token-fixture",
+                opener=opener,
+            )
+        self.assertEqual(raised.exception.code, 404)
+        self.assertEqual(seen["job_token"], "ci-job-token-fixture")
+        self.assertNotIn("/raw?", seen["url"])
+        # Truncated / mutable refs still rejected before network.
+        with self.assertRaises(ValueError):
+            self.mod.fetch_templates_file_metadata(
+                "http://192.168.68.12/api/v4/projects/1",
+                pin[:7],
+                job_token="ci-job-token-fixture",
+                opener=opener,
+            )
 
     def test_closure_timing_ratio_report_persists_cold_warm_variance(self):
         """Persist cold-miss + warm restore/install timings; no whole-pipeline 25% claim."""
@@ -689,7 +831,10 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertLess(checkout_idx, restore_idx)
         before = "\n".join(steps)
         self.assertIn("require-immutable-ref", before)
-        self.assertIn("file-metadata", before)
+        self.assertIn("record-pinned-raw", before)
+        self.assertIn("transport_bound_pin", before)
+        # JOB-TOKEN metadata JSON 404 is a real policy; canary must not block on it.
+        self.assertNotRegex(before, r"(?m)^\s*[^#]*\bfile-metadata\b")
         self.assertNotIn("--upstream-host npm.ajrly.com", text)
         self.assertIn("configured_registry", text)
         self.assertIn("observed_registry_hosts", text)
@@ -746,9 +891,11 @@ class JobInstallScopeTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        spec = importlib.util.spec_from_file_location("dependency_cache", SCRIPT)
+        spec = importlib.util.spec_from_file_location("dependency_cache_job_scope", SCRIPT)
         cls.mod = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
+        # Register before exec so @dataclass can resolve the module namespace (Py3.12+/Alpine).
+        sys.modules[spec.name] = cls.mod
         spec.loader.exec_module(cls.mod)
 
     def test_resolve_job_install_scope_reads_project_path_over_cache_scope_flag(self):
@@ -862,13 +1009,44 @@ class JobInstallScopeTests(unittest.TestCase):
         canary = ROOT / "canary" / "node-scoped-install.yml"
         self.assertTrue(canary.is_file(), "dedicated scoped-install canary missing")
         text = canary.read_text()
+        data = yaml.load(text, Loader=GitLabLoader)
         self.assertIn("PROJECT_PATH", text)
         self.assertIn("apps/backend/api", text)
         self.assertIn("pnpm-install-scoped", text)
         self.assertIn(VERIFIED_NODE_DIGEST, text)
         self.assertIn("--scope-from-job", text)
+        self.assertIn("record-pinned-raw", text)
+        self.assertIn("transport_bound_pin", text)
+        self.assertIn("cold_skip_restore", text)
+        self.assertIn("--filter api...", text)
+        self.assertIn("--filter .", text)
+        self.assertNotRegex(text, r"(?m)^\s*[^#]*\bpnpm\s+.*--ignore-scripts")
+        self.assertNotRegex(text, r"(?m)^\s*[^#]*\bfile-metadata\b")
+        self.assertNotIn("verify\":\"dual_raw\"", text)
+        for name in (
+            "node-scoped-install-canary-cold",
+            "node-scoped-install-canary-warm",
+            "node-scoped-install-canary-warm2",
+            "node-scoped-install-canary-sources-only",
+        ):
+            self.assertIn(name, data)
+        self.assertEqual(
+            data["node-scoped-install-canary-cold"]["variables"]["AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE"],
+            "true",
+        )
+        self.assertEqual(
+            data["node-scoped-install-canary-warm"]["needs"],
+            ["node-scoped-install-canary-cold"],
+        )
+        self.assertEqual(
+            data["node-scoped-install-canary-warm2"]["needs"],
+            ["node-scoped-install-canary-warm"],
+        )
         pipeline = PIPELINE_YML.read_text()
         self.assertNotIn("node-scoped-install.yml", pipeline)
+        # .node remains free of metadata-call blocks when dependency cache is gated.
+        node_text = NODE_YML.read_text()
+        self.assertNotRegex(node_text, r"(?m)^\s*[^#]*\bfile-metadata\b")
 
 
 

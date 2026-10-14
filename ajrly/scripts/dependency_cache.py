@@ -116,7 +116,12 @@ def fetch_templates_file_metadata(
     job_token: str = "",
     opener=None,
 ) -> Dict[str, object]:
-    """GET repository/files metadata for the immutable pin (server authority)."""
+    """GET repository/files metadata for the immutable pin (server authority).
+
+    Cross-project JOB-TOKEN often receives HTTP 404 for this endpoint on GitLab.
+    Ordinary canary before_script must not block on this; use transport-bound
+    /raw pin helpers instead. Kept for optional metadata-capable tokens only.
+    """
     pin = require_immutable_templates_ref(ref)
     if "/" in script or script.startswith("."):
         relative = script
@@ -133,6 +138,127 @@ def fetch_templates_file_metadata(
     with open_url(request, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return verify_templates_file_metadata(payload, expected_ref=pin)
+
+
+# Response headers some GitLab versions may attach to /repository/files/.../raw.
+_RAW_COMMIT_HEADER_NAMES = (
+    "x-gitlab-commit-id",
+    "x-gitlab-commit-sha",
+    "gitlab-commit-id",
+)
+
+
+def parse_http_header_blob(text: str) -> Dict[str, str]:
+    """Parse a curl -D / urllib header blob into lower-cased header map."""
+    headers: Dict[str, str] = {}
+    for line in (text or "").splitlines():
+        cleaned = line.strip("\r")
+        if not cleaned or cleaned.lower().startswith("http/"):
+            continue
+        if ":" not in cleaned:
+            continue
+        key, value = cleaned.split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+    return headers
+
+
+def extract_response_commit_id(headers: Mapping[str, str]) -> str:
+    """Return a commit id from raw-response headers when the server provides one."""
+    lowered = {str(k).lower(): str(v).strip() for k, v in headers.items()}
+    for name in _RAW_COMMIT_HEADER_NAMES:
+        value = lowered.get(name, "")
+        if value:
+            return value
+    return ""
+
+
+def record_transport_bound_pin(
+    path: Path,
+    ref: str,
+    *,
+    response_headers: Optional[Mapping[str, str]] = None,
+    script: str = "dependency_cache.py",
+) -> Dict[str, object]:
+    """Record a transport-bound pin for a locally fetched /raw script body.
+
+    Trust model: immutable 40-char Git commit ref + successful JOB-TOKEN /raw
+    fetch on the trusted internal API. Local content_sha256 is a hash of the
+    transport payload only — NOT independent cryptographic server metadata
+    authority (repository/files JSON content_sha256). Dual-raw consistency
+    checks are likewise not server metadata proof.
+    """
+    pin = require_immutable_templates_ref(ref)
+    if not path.is_file():
+        raise ValueError("templates_raw_empty_or_missing")
+    data = path.read_bytes()
+    if not data:
+        raise ValueError("templates_raw_empty_or_missing")
+    content_sha = _sha256_bytes(data)
+    response_commit = extract_response_commit_id(response_headers or {})
+    if response_commit and response_commit != pin:
+        raise ValueError("templates_raw_commit_header_mismatch")
+    return {
+        "ref": pin,
+        "script": Path(script).name if script else path.name,
+        "bytes": len(data),
+        "content_sha256": content_sha,
+        "verify": "transport_bound_pin",
+        "authority": "immutable_git_ref_via_raw",
+        "server_metadata_authority": False,
+        "response_commit_id": response_commit,
+        "response_headers_commit_bound": bool(response_commit),
+    }
+
+
+def fetch_templates_script_raw(
+    project_api: str,
+    ref: str,
+    script: str = "dependency_cache.py",
+    *,
+    job_token: str = "",
+    destination: Optional[Path] = None,
+    opener=None,
+    recheck: bool = False,
+) -> Dict[str, object]:
+    """GET repository/files/.../raw at an immutable SHA using CI Job-Token.
+
+    Does not call repository/files metadata. Optional recheck performs a second
+    GET and compares payload hashes; default is a single fetch to avoid duplicate
+    network overhead.
+    """
+    pin = require_immutable_templates_ref(ref)
+    url = templates_script_raw_url(project_api, pin, script)
+    headers: Dict[str, str] = {}
+    token = (job_token or "").strip()
+    if token:
+        headers["JOB-TOKEN"] = token
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    open_url = opener or urllib.request.urlopen
+    with open_url(request, timeout=30) as response:
+        body = response.read()
+        resp_headers = {str(k).lower(): str(v) for k, v in response.headers.items()}
+    if not body:
+        raise ValueError("templates_raw_empty_or_missing")
+    if destination is None:
+        handle, tmp_name = tempfile.mkstemp(prefix="ajrly-templates-", suffix=".py")
+        os.close(handle)
+        destination = Path(tmp_name)
+    destination.write_bytes(body)
+    record = record_transport_bound_pin(
+        destination, pin, response_headers=resp_headers, script=script
+    )
+    if recheck:
+        request2 = urllib.request.Request(url, headers=headers, method="GET")
+        with open_url(request2, timeout=30) as response2:
+            body2 = response2.read()
+        if not body2:
+            raise ValueError("templates_raw_empty_or_missing")
+        if _sha256_bytes(body2) != record["content_sha256"]:
+            raise ValueError("templates_raw_recheck_mismatch")
+        record = {**record, "recheck": True}
+    else:
+        record = {**record, "recheck": False}
+    return record
 
 
 def detect_platform() -> str:
@@ -1036,7 +1162,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         "command",
         choices=[
             "key", "restore", "configure-registry", "script-url", "report",
-            "require-immutable-ref", "file-metadata", "timing-ratio",
+            "require-immutable-ref", "file-metadata", "record-pinned-raw",
+            "fetch-pinned-raw", "timing-ratio",
         ],
     )
     parser.add_argument("--root", default=".")
@@ -1053,6 +1180,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--key", default="")
     parser.add_argument("--ref", default="")
     parser.add_argument("--script", default="dependency_cache.py")
+    parser.add_argument("--path", default="")
+    parser.add_argument("--output", default="")
+    parser.add_argument("--response-headers", default="")
+    parser.add_argument(
+        "--recheck",
+        action="store_true",
+        default=False,
+        help="Optional second /raw GET to compare payload hashes (default off)",
+    )
     parser.add_argument("--phase", default="")
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--install-elapsed", type=float, default=None)
@@ -1095,6 +1231,38 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             job_token=os.environ.get("CI_JOB_TOKEN", ""),
         )
         print(json.dumps(meta, sort_keys=True))
+        return 0
+
+    if args.command == "record-pinned-raw":
+        ref = args.ref or os.environ.get("AJRLY_TEMPLATES_REF", "")
+        path = Path(args.path or "").expanduser()
+        if not args.path:
+            raise SystemExit("--path is required for record-pinned-raw")
+        header_map: Dict[str, str] = {}
+        if args.response_headers:
+            header_map = parse_http_header_blob(
+                Path(args.response_headers).expanduser().read_text(encoding="utf-8", errors="replace")
+            )
+        record = record_transport_bound_pin(
+            path, ref, response_headers=header_map, script=args.script
+        )
+        print(json.dumps(record, sort_keys=True))
+        return 0
+
+    if args.command == "fetch-pinned-raw":
+        api = os.environ.get("CI_API_V4_URL", "http://192.168.68.12/api/v4")
+        project = os.environ.get("AJRLY_TEMPLATES_PROJECT_ID", "1")
+        ref = args.ref or os.environ.get("AJRLY_TEMPLATES_REF", "")
+        output = Path(args.output or args.path or "/tmp/ajrly-dependency-cache.py")
+        record = fetch_templates_script_raw(
+            f"{api}/projects/{project}",
+            ref,
+            args.script,
+            job_token=os.environ.get("CI_JOB_TOKEN", ""),
+            destination=output,
+            recheck=bool(args.recheck),
+        )
+        print(json.dumps(record, sort_keys=True))
         return 0
 
     if args.command == "timing-ratio":
