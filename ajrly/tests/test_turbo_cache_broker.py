@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import sys
 import unittest
 from unittest import mock
 
@@ -29,6 +30,8 @@ def load_mod():
     spec = importlib.util.spec_from_file_location("turbo_cache_broker", path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    # Register before exec so @dataclass can resolve the module namespace (Py3.12+).
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

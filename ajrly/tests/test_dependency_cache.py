@@ -8,6 +8,7 @@ import json
 import os
 import pathlib
 import shutil
+import sys
 import tarfile
 import tempfile
 import time
@@ -56,6 +57,8 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertTrue(SCRIPT.exists(), "dependency_cache.py must exist")
         spec = importlib.util.spec_from_file_location("ajrly_dependency_cache", SCRIPT)
         self.mod = importlib.util.module_from_spec(spec)
+        # Register before exec so @dataclass can resolve the module namespace (Py3.12+).
+        sys.modules[spec.name] = self.mod
         spec.loader.exec_module(self.mod)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name)

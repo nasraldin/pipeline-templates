@@ -21,7 +21,8 @@ class RegistryEnvironmentTests(unittest.TestCase):
             shutil.copyfile(root / "scripts/dependency_cache.py", helper)
             block = block.replace("/tmp/ajrly-dependency-cache.py", str(helper))
             env = dict(os.environ, CI_PROJECT_DIR=temp, AJRLY_NPM_REGISTRY="https://npm.ajrly.com/", AJRLY_NPM_INSTALL_TOKEN="fixture-read-only-token", PNPM_CONFIG_REGISTRY="https://registry.npmjs.org/")
-            result = subprocess.run(["bash", "-ec", block + "\npnpm config get registry"], env=env, cwd=temp, capture_output=True, text=True, check=True)
+            # Alpine CI images may not ship bash; the block is POSIX sh.
+            result = subprocess.run(["sh", "-ec", block + "\npnpm config get registry"], env=env, cwd=temp, capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout.strip().splitlines()[-1], "https://npm.ajrly.com/")
 
 
