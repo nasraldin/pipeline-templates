@@ -1,0 +1,5 @@
+# Include-only pin for project-7 authority-read canary.
+# No jobs here — keeps feature flags default-off outside the isolated canary job.
+variables:
+  AJRLY_TURBO_BROKER_ENABLED: "false"
+  AJRLY_TURBO_WRITE_ENABLED: "false"
