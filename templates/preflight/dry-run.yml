@@ -30,9 +30,7 @@
 
 .preflight_root_and_examples:
   stage: preflight
-  image:
-    name: alpine:3.21
-    pull_policy: if-not-present
+  image: alpine:3.21
   variables:
     GITLAB_API_URL: "http://192.168.68.12/api/v4"
     GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
