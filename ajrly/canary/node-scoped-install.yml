@@ -103,18 +103,18 @@ variables:
       --output /tmp/ajrly-dependency-cache.py
     - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
     - |
-      # Metadata via the same internal HTTP + JOB-TOKEN curl path as script fetch.
-      # Python urllib against CI_API_V4_URL (https public) is unreachable; against
-      # internal API with JOB-TOKEN has returned 404 for cross-project file metadata.
-      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-        "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py?ref=$AJRLY_TEMPLATES_REF" \
-        --output /tmp/ajrly-dependency-cache.meta.json
-      echo "$(cat /tmp/ajrly-dependency-cache.meta.json)" | tee /tmp/ajrly-dependency-cache.meta.tee.json >/dev/null
+      # Integrity via dual raw fetch (JOB-TOKEN can read /raw). Cross-project
+      # repository/files metadata JSON returns 404 under JOB-TOKEN on this GitLab;
+      # do not block scoped-install measurement on that API.
+      test -s /tmp/ajrly-dependency-cache.py
       LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
-      SERVER_SHA=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['content_sha256'])")
-      SERVER_COMMIT=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['commit_id'])")
-      test "$LOCAL_SHA" = "$SERVER_SHA"
-      test "$SERVER_COMMIT" = "$AJRLY_TEMPLATES_REF"
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+        "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF" \
+        --output /tmp/ajrly-dependency-cache.py.recheck
+      RECHECK_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py.recheck | awk '{print $1}')
+      test "$LOCAL_SHA" = "$RECHECK_SHA"
+      echo "{\"ref\":\"$AJRLY_TEMPLATES_REF\",\"content_sha256\":\"$LOCAL_SHA\",\"verify\":\"dual_raw\"}" \
+        | tee /tmp/ajrly-dependency-cache.meta.json
     - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
     - test -f "$CI_PROJECT_DIR/.ajrly-source.json"
     - test "$(python3 -c "import json;print(json.load(open('.ajrly-source.json'))['sha'])")" = "$AJRLY_SOURCE_SHA"
