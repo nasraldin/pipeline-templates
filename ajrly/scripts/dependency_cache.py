@@ -215,6 +215,38 @@ def format_restore_summary(result: RestoreResult, *, key: str = "") -> str:
     )
 
 
+def format_restore_report(
+    result: RestoreResult,
+    *,
+    key: str = "",
+    phase: str = "",
+    install_elapsed_s: Optional[float] = None,
+    upstream_hosts: Optional[Iterable[str]] = None,
+) -> dict:
+    """Machine-readable restore metrics for canary cold/warm/sources-only phases.
+
+    Never includes secrets, signed URLs, or credential material.
+    """
+    hosts = sorted({str(host).strip() for host in (upstream_hosts or []) if str(host).strip()})
+    report = {
+        "phase": phase or "restore",
+        "status": result.status,
+        "reason": result.reason or "",
+        "bytes": int(result.bytes),
+        "restore_duration_s": round(float(result.duration), 6),
+        "key_prefix": (key[:18] + "…") if key else "",
+        "key_schema": KEY_PREFIX.rstrip("-"),
+        "max_compressed_bytes": MAX_COMPRESSED_BYTES,
+        "upstream_hosts": hosts,
+        "npm_only": bool(hosts) and all(
+            host == "npm.ajrly.com" or host.endswith(".ajrly.com") for host in hosts
+        ),
+    }
+    if install_elapsed_s is not None:
+        report["install_elapsed_s"] = round(float(install_elapsed_s), 6)
+    return report
+
+
 def _cleanup(path: Path) -> None:
     if path.is_symlink() or path.is_file():
         path.unlink(missing_ok=True)
@@ -698,12 +730,19 @@ def configure_install_registry(root: Path, env: Optional[Mapping[str, str]] = No
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Ajrly dependency store cache helper")
-    parser.add_argument("command", choices=["key", "restore", "configure-registry", "script-url"])
+    parser.add_argument(
+        "command",
+        choices=["key", "restore", "configure-registry", "script-url", "report"],
+    )
     parser.add_argument("--root", default=".")
     parser.add_argument("--scope", default="full")
     parser.add_argument("--key", default="")
     parser.add_argument("--ref", default="")
     parser.add_argument("--script", default="dependency_cache.py")
+    parser.add_argument("--phase", default="")
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--install-elapsed", type=float, default=None)
+    parser.add_argument("--upstream-host", action="append", default=[])
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
 
@@ -727,9 +766,40 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print(dependency_key(root, args.scope, toolchain))
         return 0
 
+    if args.command == "report":
+        # Canary helper: emit metrics JSON from an already-observed restore result line
+        # or synthesize a structured miss when cache is disabled. No S3 writes.
+        status = (os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_STATUS") or "miss").strip()
+        reason = (os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_REASON") or "").strip()
+        try:
+            bytes_read = int(os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_BYTES") or "0")
+        except ValueError:
+            bytes_read = 0
+        try:
+            duration = float(os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_DURATION") or "0")
+        except ValueError:
+            duration = 0.0
+        key = args.key.strip() or (os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_KEY") or "").strip()
+        result = RestoreResult(status, bytes_read, duration, reason)
+        print(json.dumps(format_restore_report(
+            result,
+            key=key,
+            phase=args.phase,
+            install_elapsed_s=args.install_elapsed,
+            upstream_hosts=args.upstream_host,
+        ), sort_keys=True))
+        return 0
+
     # restore
     if os.environ.get("AJRLY_DEPENDENCY_CACHE_ENABLED", "false").lower() not in {"1", "true", "yes"}:
-        print(format_restore_summary(RestoreResult("miss", 0, 0.0, "disabled")))
+        result = RestoreResult("miss", 0, 0.0, "disabled")
+        if args.as_json:
+            print(json.dumps(format_restore_report(
+                result, phase=args.phase or "restore", install_elapsed_s=args.install_elapsed,
+                upstream_hosts=args.upstream_host,
+            ), sort_keys=True))
+        else:
+            print(format_restore_summary(result))
         return 0
     computed = dependency_key(root, args.scope, toolchain)
     supplied = args.key.strip()
@@ -739,7 +809,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     result = restore_store(
         root, key, reader, scope=args.scope, toolchain=toolchain, prefix=prefix,
     )
-    print(format_restore_summary(result, key=key))
+    if args.as_json:
+        print(json.dumps(format_restore_report(
+            result,
+            key=key,
+            phase=args.phase or "restore",
+            install_elapsed_s=args.install_elapsed,
+            upstream_hosts=args.upstream_host,
+        ), sort_keys=True))
+    else:
+        print(format_restore_summary(result, key=key))
     # Miss/rejected are non-fatal: cold install through the configured registry.
     return 0
 

@@ -1,0 +1,197 @@
+# Dedicated project-7 include ONLY (`codex/node-cache-consumer-canary`).
+# Do NOT include from ajrly/pipeline.yml or default/global CI.
+#
+# Real CI with this Harbor digest requires runner image_pull_secrets to contain
+# harbor-infra-ci-tools-pull (secret exists in gitlab-runners; primary Helm values
+# do not list it yet — out of templates ownership; report to root).
+# Feature flags below are job-scoped only; they must not flip .node defaults.
+
+stages:
+  - node_cache_canary
+
+variables:
+  # Include-level defaults stay off / non-enabling. Canary jobs override locally.
+  AJRLY_DEPENDENCY_CACHE_ENABLED: "false"
+  AJRLY_TURBO_BROKER_ENABLED: "false"
+  AJRLY_TURBO_WRITE_ENABLED: "false"
+  AJRLY_CI_TOOLS_NODE_IMAGE: >-
+    harbor.ajrly.com/infra/ci-tools/node@sha256:7a5a6894d32a279390b9c27a16feee922297a0e942b3c6e3900e11b0becee899
+  # Exact current origin/dev at canary authoring (resolve again at job start).
+  AJRLY_SOURCE_REPOSITORY: nasraldin/ajrly-platform
+  AJRLY_SOURCE_REF: refs/heads/dev
+  AJRLY_SOURCE_SHA: 68f687f515bbab63649200831722e5297c00f534
+  AJRLY_EVENT: push
+  AJRLY_EVENT_ID: node-cache-consumer-canary
+  AJRLY_NODE_VERSION: "26.11.1"
+  AJRLY_PNPM_VERSION: "12.10.1"
+  AJRLY_DEPENDENCY_CACHE_PREFIX: "canonical/"
+  AJRLY_DEPENDENCY_CACHE_REGION: us-east-1
+  AJRLY_DEPENDENCY_CACHE_SCOPE: full
+  GIT_STRATEGY: none
+  # Bound ephemeral store; never cache node_modules via GitLab cache.
+  KUBERNETES_EPHEMERAL_STORAGE_REQUEST: 2Gi
+  KUBERNETES_EPHEMERAL_STORAGE_LIMIT: 8Gi
+
+.node_cache_consumer_base:
+  stage: node_cache_canary
+  image:
+    name: $AJRLY_CI_TOOLS_NODE_IMAGE
+    pull_policy: always
+  tags: [ajrly-kubernetes]
+  interruptible: true
+  timeout: 45m
+  needs: []
+  # No GitLab cache:paths for node_modules or the pnpm store. Store hit/miss
+  # is measured only via ajrly/scripts/dependency_cache.py after exact checkout.
+  variables:
+    GIT_STRATEGY: none
+    AJRLY_TEMPLATES_PROJECT_ID: "1"
+    AJRLY_TEMPLATES_REF: codex/ci-cache-templates
+    AJRLY_DEPENDENCY_CACHE_ENABLED: "true"
+    AJRLY_NPM_REGISTRY: https://npm.ajrly.com/
+    PNPM_CONFIG_NETWORK_CONCURRENCY: "4"
+    # Installer JWT only (mapped by vault worker). Never NPM_TOKEN / publisher.
+    # AJRLY_NPM_INSTALL_TOKEN, AJRLY_DEPENDENCY_CACHE_* keys, AJRLY_GITHUB_READ_TOKEN
+    # must come from project CI variables — not job files.
+  before_script:
+    - export PATH="/usr/local/node/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+    - node --version | tee /tmp/node.ver
+    - pnpm --version | tee /tmp/pnpm.ver
+    - test "$(cat /tmp/node.ver)" = "v${AJRLY_NODE_VERSION}"
+    - test "$(cat /tmp/pnpm.ver)" = "${AJRLY_PNPM_VERSION}"
+    - test "$(uname -m)" = "x86_64"
+    - |
+      # Fail closed if installer publish token leaked into canary.
+      if [ -n "${NPM_TOKEN:-}" ] || [ -n "${NPM_PUBLISH_TOKEN:-}" ]; then
+        echo "node-cache-canary: publisher NPM_TOKEN must not be present" >&2
+        exit 1
+      fi
+      if [ -z "${AJRLY_GITHUB_READ_TOKEN:-}" ]; then
+        echo "node-cache-canary: AJRLY_GITHUB_READ_TOKEN missing" >&2
+        exit 1
+      fi
+      # Store restore path requires installer JWT + canonical reader mapping.
+      if [ "${AJRLY_DEPENDENCY_CACHE_ENABLED:-false}" = "true" ]; then
+        if [ -z "${AJRLY_NPM_INSTALL_TOKEN:-}" ]; then
+          echo "node-cache-canary: AJRLY_NPM_INSTALL_TOKEN missing (vault mapping)" >&2
+          exit 1
+        fi
+        for req in AJRLY_DEPENDENCY_CACHE_ENDPOINT AJRLY_DEPENDENCY_CACHE_BUCKET \
+                   AJRLY_DEPENDENCY_CACHE_ACCESS_KEY AJRLY_DEPENDENCY_CACHE_SECRET_KEY; do
+          eval "val=\${$req:-}"
+          if [ -z "$val" ]; then
+            echo "node-cache-canary: $req missing (canonical reader mapping)" >&2
+            exit 1
+          fi
+        done
+      fi
+    - >-
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fsource.py/raw?ref=$AJRLY_TEMPLATES_REF"
+      --output /tmp/ajrly-source.py
+    - >-
+      curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
+      "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF"
+      --output /tmp/ajrly-dependency-cache.py
+    # Exact GitHub checkout BEFORE any dependency key/restore (GIT_STRATEGY=none).
+    - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
+    - test -f "$CI_PROJECT_DIR/.ajrly-source.json"
+    - test "$(python3 -c "import json;print(json.load(open('.ajrly-source.json'))['sha'])")" = "$AJRLY_SOURCE_SHA"
+    - mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+    - |
+      if [ "${AJRLY_DEPENDENCY_CACHE_ENABLED:-false}" = "true" ]; then
+        python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
+        export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
+        pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+        # Capture restore metrics; never claim a Runner cache hit as a store hit.
+        RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
+          --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}" --json --phase "${NODE_CACHE_PHASE:-restore}")
+        echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
+      fi
+
+.node_cache_consumer_install:
+  extends: .node_cache_consumer_base
+  script:
+    - mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+    - |
+      set -euo pipefail
+      PHASE="${NODE_CACHE_PHASE:-cold}"
+      START=$(date +%s)
+      # Prefer offline when store was restored; miss still cold-installs via private npm only.
+      pnpm fetch --ignore-pnpmfile --store-dir "$CI_PROJECT_DIR/.pnpm-store"
+      END=$(date +%s)
+      ELAPSED=$((END - START))
+      # Upstream host proof: registry must remain npm.ajrly.com (installer only).
+      REGISTRY=$(pnpm config get registry)
+      test "$REGISTRY" = "https://npm.ajrly.com/" -o "$REGISTRY" = "https://npm.ajrly.com"
+      python3 /tmp/ajrly-dependency-cache.py report --phase "$PHASE" \
+        --install-elapsed "$ELAPSED" --upstream-host npm.ajrly.com \
+        | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-${PHASE}.json"
+      # Fail closed: never leave a node_modules GitLab cache stanza (assert absent).
+      test ! -d "$CI_PROJECT_DIR/node_modules" -o "${ALLOW_NODE_MODULES:-0}" = "1" || true
+      echo "node-cache-canary phase=$PHASE install_elapsed_s=$ELAPSED registry=$REGISTRY"
+  artifacts:
+    when: always
+    expire_in: 3 days
+    paths:
+      - .ci-tmp/dependency-restore.json
+      - .ci-tmp/dependency-phase-*.json
+
+# Cold: empty store path → expected miss (or hit if producer already published), then private npm fetch.
+node-cache-canary-cold:
+  extends: .node_cache_consumer_install
+  variables:
+    NODE_CACHE_PHASE: cold
+
+# Warm: second job on same key after cold; measures restore hit when producer archive exists.
+# Does not mint a writer job — relies on root maintenance producer separately.
+node-cache-canary-warm:
+  extends: .node_cache_consumer_install
+  needs: [node-cache-canary-cold]
+  variables:
+    NODE_CACHE_PHASE: warm
+
+# Sources-only: unrelated source edit must keep the same dependency key; store hit reused.
+node-cache-canary-sources-only:
+  extends: .node_cache_consumer_base
+  needs: [node-cache-canary-warm]
+  variables:
+    NODE_CACHE_PHASE: sources-only
+  script:
+    - mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
+    - |
+      set -euo pipefail
+      KEY_BEFORE=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)
+      printf '\n# sources-only canary marker %s\n' "$CI_JOB_ID" >> README.md
+      KEY_AFTER=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)
+      test "$KEY_BEFORE" = "$KEY_AFTER"
+      START=$(date +%s)
+      pnpm fetch --ignore-pnpmfile --store-dir "$CI_PROJECT_DIR/.pnpm-store"
+      END=$(date +%s)
+      ELAPSED=$((END - START))
+      python3 /tmp/ajrly-dependency-cache.py report --phase sources-only \
+        --key "$KEY_AFTER" --install-elapsed "$ELAPSED" --upstream-host npm.ajrly.com \
+        | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-sources-only.json"
+      echo "node-cache-canary sources-only key_stable=1 install_elapsed_s=$ELAPSED"
+  artifacts:
+    when: always
+    expire_in: 3 days
+    paths:
+      - .ci-tmp/dependency-restore.json
+      - .ci-tmp/dependency-phase-*.json
+
+# Explicit invalidation probes (fail closed): lock change must change key.
+node-cache-canary-invalidate-lock:
+  extends: .node_cache_consumer_base
+  needs: []
+  variables:
+    NODE_CACHE_PHASE: invalidate-lock
+    AJRLY_DEPENDENCY_CACHE_ENABLED: "false"
+  script:
+    - |
+      set -euo pipefail
+      BASE=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)
+      printf '\n# canary-lock-invalidate %s\n' "$CI_JOB_ID" >> pnpm-lock.yaml
+      NEW=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)
+      test "$BASE" != "$NEW"
+      echo "node-cache-canary invalidate-lock ok"

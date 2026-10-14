@@ -22,8 +22,10 @@ jobs never upload canonical archives; `publish_store` is a pure library for
 the protected platform producer. Turbo remote cache defaults to local-only;
 `AJRLY_TURBO_BROKER_ENABLED` (default false) requests a short-lived grant from
 `ci-cache-authority` after exact checkout and points `TURBO_API` at the proxy
-only — never the upstream writer. `checks/`, `tests/`, and `build/` run existing
-monorepo commands.
+only — never the upstream writer. Dedicated project-7 proof lives in
+`canary/node-cache-consumer.yml` (not included by `pipeline.yml`); it pins the
+Harbor maintenance tool image by registry digest and enables store restore only
+on canary jobs. `checks/`, `tests/`, and `build/` run existing monorepo commands.
 Integration PostGIS and Redis are disposable containers in the job pod and use
 localhost. `security/` provides opt-in scanning through `RUN_SECURITY` (enabled
 by default). `quality/`, `images/`, and `release/` are restricted to a separate

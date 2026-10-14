@@ -20,7 +20,15 @@ import yaml
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "scripts/dependency_cache.py"
 NODE_YML = pathlib.Path(__file__).parents[1] / "common/node.yml"
+CANARY_YML = pathlib.Path(__file__).parents[1] / "canary/node-cache-consumer.yml"
+PIPELINE_YML = pathlib.Path(__file__).parents[1] / "pipeline.yml"
 ROOT = pathlib.Path(__file__).parents[1]
+
+# Verified Harbor digest from platform/ci-tools/versions.json + registry-digest.json
+# (ci-tools-registry-publication RESULT). Must end with becee899 — never invent.
+VERIFIED_NODE_DIGEST = (
+    "sha256:7a5a6894d32a279390b9c27a16feee922297a0e942b3c6e3900e11b0becee899"
+)
 
 
 class GitLabLoader(yaml.SafeLoader):
@@ -129,7 +137,7 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(result["key"], key)
         return key, writer
 
-    def test_key_changes_for_lock_workspace_patch_toolchain_not_source(self):
+    def test_key_changes_for_lock_workspace_patch_toolchain_libc_not_source(self):
         base = self._key()
         (self.root / "apps" / "readme.txt").write_text("unrelated source edit\n")
         self.assertEqual(base, self._key(), "unrelated source edits must not change the key")
@@ -149,10 +157,41 @@ class DependencyCacheTests(unittest.TestCase):
         other = self.mod.dependency_key(self.root, "full", {"node": "26.11.1", "pnpm": "12.10.2"})
         self.assertNotEqual(base, other, "toolchain edits must invalidate")
 
+        with mock.patch.object(self.mod, "detect_libc", side_effect=["gnu", "musl"]):
+            gnu_key = self.mod.dependency_key(self.root, "full", self.toolchain)
+            musl_key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        self.assertNotEqual(gnu_key, musl_key, "libc edits must invalidate")
+
         scope_key = self.mod.dependency_key(self.root, "apps/web/admin", self.toolchain)
         self.assertNotEqual(base, scope_key)
         self.assertTrue(base.startswith("dep-v1-"))
         self.assertRegex(base, r"^dep-v1-[0-9a-f]{64}$")
+
+    def test_restore_report_json_omits_secrets_and_marks_npm_only(self):
+        result = self.mod.RestoreResult("hit", 4096, 1.25, "")
+        report = self.mod.format_restore_report(
+            result,
+            key="dep-v1-" + ("a" * 64),
+            phase="warm",
+            install_elapsed_s=3.5,
+            upstream_hosts=["npm.ajrly.com", "npm.ajrly.com"],
+        )
+        self.assertEqual(report["status"], "hit")
+        self.assertEqual(report["phase"], "warm")
+        self.assertEqual(report["bytes"], 4096)
+        self.assertEqual(report["install_elapsed_s"], 3.5)
+        self.assertTrue(report["npm_only"])
+        self.assertEqual(report["upstream_hosts"], ["npm.ajrly.com"])
+        self.assertEqual(report["max_compressed_bytes"], 2 * 1024 ** 3)
+        blob = json.dumps(report)
+        self.assertNotIn("AKIA", blob)
+        self.assertNotIn("secret", blob.lower())
+        self.assertNotIn("X-Amz", blob)
+        # External registry host must not claim npm_only.
+        mixed = self.mod.format_restore_report(
+            result, upstream_hosts=["npm.ajrly.com", "registry.npmjs.org"]
+        )
+        self.assertFalse(mixed["npm_only"])
 
     def test_restore_requires_verified_source_manifest(self):
         key, reader = self._publish_local({"index/v1": b"pkg\n"})
@@ -484,6 +523,53 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(variables.get("AJRLY_NPM_REGISTRY", ""), "")
         self.assertNotIn("AJRLY_CI_TOOL_IMAGE_DIGEST", variables)
         self.assertEqual(variables.get("PNPM_CONFIG_NETWORK_CONCURRENCY"), "4")
+
+    def test_canary_pins_verified_digest_without_global_flag_cutover(self):
+        self.assertTrue(CANARY_YML.is_file(), "node-cache-consumer canary include missing")
+        text = CANARY_YML.read_text()
+        data = yaml.load(text, Loader=GitLabLoader)
+        self.assertIn(VERIFIED_NODE_DIGEST, text)
+        self.assertTrue(VERIFIED_NODE_DIGEST.endswith("becee899"))
+        # Include-level defaults remain disabled (no global cutover).
+        self.assertEqual(data["variables"]["AJRLY_DEPENDENCY_CACHE_ENABLED"], "false")
+        self.assertEqual(data["variables"]["AJRLY_TURBO_BROKER_ENABLED"], "false")
+        self.assertEqual(data["variables"]["AJRLY_TURBO_WRITE_ENABLED"], "false")
+        # Job-scoped enable only on consumer base / install jobs.
+        base = data[".node_cache_consumer_base"]
+        self.assertEqual(base["variables"]["GIT_STRATEGY"], "none")
+        self.assertEqual(base["variables"]["AJRLY_DEPENDENCY_CACHE_ENABLED"], "true")
+        self.assertEqual(base["variables"]["AJRLY_NPM_REGISTRY"], "https://npm.ajrly.com/")
+        self.assertNotIn("cache", base)
+        self.assertNotRegex(text, r"(?m)^\s*cache:\s*$")
+        self.assertNotRegex(text, r"(?m)^\s*paths:\s*\n\s*-\s*node_modules")
+        # Ordering: exact checkout before restore in before_script.
+        steps = [str(s) for s in base["before_script"]]
+        checkout_idx = next(i for i, s in enumerate(steps) if "ajrly-source.py checkout" in s)
+        restore_idx = next(i for i, s in enumerate(steps) if "dependency-cache.py restore" in s or "ajrly-dependency-cache.py restore" in s)
+        self.assertLess(checkout_idx, restore_idx)
+        # No ordinary writer / publish_store / turbo broker enable on canary jobs.
+        self.assertNotIn("publish_store", text)
+        self.assertNotIn("AJRLY_TURBO_BROKER_ENABLED: \"true\"", text)
+        # Publisher token must never be declared as a CI variable (denial checks may mention it).
+        self.assertNotRegex(text, r"(?m)^\s*NPM_TOKEN:\s*")
+        self.assertIn('publisher NPM_TOKEN must not be present', text)
+        # Dedicated jobs present for cold/warm/sources-only + lock invalidation.
+        for name in (
+            "node-cache-canary-cold",
+            "node-cache-canary-warm",
+            "node-cache-canary-sources-only",
+            "node-cache-canary-invalidate-lock",
+        ):
+            self.assertIn(name, data)
+        # Must not be wired into the default reusable pipeline.
+        pipeline_text = PIPELINE_YML.read_text()
+        self.assertNotIn("node-cache-consumer.yml", pipeline_text)
+        self.assertNotIn("canary/node-cache-consumer", pipeline_text)
+        # Default .node remains gated off after canary addition.
+        node_vars = yaml.load(NODE_YML.read_text(), Loader=GitLabLoader)[".node"]["variables"]
+        self.assertEqual(node_vars["AJRLY_DEPENDENCY_CACHE_ENABLED"], "false")
+        self.assertEqual(node_vars.get("AJRLY_NPM_REGISTRY", ""), "")
+        self.assertNotIn("AJRLY_CI_TOOL_IMAGE_DIGEST", node_vars)
 
 
 if __name__ == "__main__":
