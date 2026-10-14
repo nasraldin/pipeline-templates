@@ -785,6 +785,9 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertLess(ref_idx, fetch_idx)
         self.assertLess(fetch_idx, restore_idx, "exact checkout must precede key/restore")
         self.assertIn("restore", script)
+        self.assertIn("PNPM_CONFIG_PREFER_OFFLINE=true", script)
+        self.assertIn('AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit"', script)
+        self.assertIn("prefer-offline true", script)
         self.assertNotIn("publish_store", script)
         self.assertNotRegex(script, r"(?m)^\s*python3 .*\bpublish\b")
         variables = node["variables"]

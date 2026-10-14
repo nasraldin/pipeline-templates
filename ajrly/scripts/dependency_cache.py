@@ -1389,7 +1389,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             ), sort_keys=True))
         else:
             print(format_restore_summary(result, key=key))
-        return 0
+        # Valid miss → cold install (exit 0). Rejected/unsafe → fail closed.
+        return 1 if result.status == "rejected" else 0
 
     computed = dependency_key(root, scope, toolchain)
     supplied = args.key.strip()
@@ -1413,8 +1414,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ), sort_keys=True))
     else:
         print(format_restore_summary(result, key=key))
-    # Miss/rejected are non-fatal: cold install through the configured registry.
-    return 0
+    # Valid miss → cold install (exit 0). Rejected/unsafe archive → fail closed.
+    return 1 if result.status == "rejected" else 0
 
 
 if __name__ == "__main__":
