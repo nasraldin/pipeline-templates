@@ -162,6 +162,13 @@ class DependencyCacheTests(unittest.TestCase):
             musl_key = self.mod.dependency_key(self.root, "full", self.toolchain)
         self.assertNotEqual(gnu_key, musl_key, "libc edits must invalidate")
 
+        with mock.patch.object(
+            self.mod, "detect_platform", side_effect=["linux-x86_64", "linux-aarch64"]
+        ):
+            amd_key = self.mod.dependency_key(self.root, "full", self.toolchain)
+            arm_key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        self.assertNotEqual(amd_key, arm_key, "arch/platform edits must invalidate")
+
         scope_key = self.mod.dependency_key(self.root, "apps/web/admin", self.toolchain)
         self.assertNotEqual(base, scope_key)
         self.assertTrue(base.startswith("dep-v1-"))
@@ -183,6 +190,8 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertTrue(report["npm_only"])
         self.assertEqual(report["upstream_hosts"], ["npm.ajrly.com"])
         self.assertEqual(report["max_compressed_bytes"], 2 * 1024 ** 3)
+        self.assertEqual(report["acceptance_class"], "persistent_canonical_restore")
+        self.assertFalse(report["local_store_warm"])
         blob = json.dumps(report)
         self.assertNotIn("AKIA", blob)
         self.assertNotIn("secret", blob.lower())
@@ -192,6 +201,26 @@ class DependencyCacheTests(unittest.TestCase):
             result, upstream_hosts=["npm.ajrly.com", "registry.npmjs.org"]
         )
         self.assertFalse(mixed["npm_only"])
+        miss = self.mod.format_restore_report(
+            self.mod.RestoreResult("miss", 0, 0.1, "not_found"),
+            phase="cold",
+            local_store_warm=False,
+        )
+        self.assertEqual(miss["acceptance_class"], "miss_no_fabricated_hit")
+        local_warm = self.mod.format_restore_report(
+            self.mod.RestoreResult("miss", 0, 0.1, "not_found"),
+            phase="cold",
+            local_store_warm=True,
+            store_bytes=1024,
+            npm_request_estimate=12,
+        )
+        self.assertEqual(local_warm["acceptance_class"], "local_store_warm_not_persistent")
+        self.assertEqual(local_warm["store_bytes"], 1024)
+        self.assertEqual(local_warm["npm_request_estimate"], 12)
+        self.assertNotEqual(
+            local_warm["acceptance_class"], "persistent_canonical_restore",
+            "same-job local store warm must never claim persistent restore acceptance",
+        )
 
     def test_restore_requires_verified_source_manifest(self):
         key, reader = self._publish_local({"index/v1": b"pkg\n"})
@@ -547,20 +576,37 @@ class DependencyCacheTests(unittest.TestCase):
         checkout_idx = next(i for i, s in enumerate(steps) if "ajrly-source.py checkout" in s)
         restore_idx = next(i for i, s in enumerate(steps) if "dependency-cache.py restore" in s or "ajrly-dependency-cache.py restore" in s)
         self.assertLess(checkout_idx, restore_idx)
-        # No ordinary writer / publish_store / turbo broker enable on canary jobs.
-        self.assertNotIn("publish_store", text)
+        # No ordinary writer / turbo broker enable on canary jobs (comments may deny-list).
+        self.assertNotRegex(text, r"(?m)^\s*[^#]*\bpublish_store\b")
         self.assertNotIn("AJRLY_TURBO_BROKER_ENABLED: \"true\"", text)
         # Publisher token must never be declared as a CI variable (denial checks may mention it).
         self.assertNotRegex(text, r"(?m)^\s*NPM_TOKEN:\s*")
         self.assertIn('publisher NPM_TOKEN must not be present', text)
-        # Dedicated jobs present for cold/warm/sources-only + lock invalidation.
+        # Dedicated jobs: cold + 2 warm + sources-only + lock/libc/arch invalidation.
         for name in (
             "node-cache-canary-cold",
             "node-cache-canary-warm",
+            "node-cache-canary-warm2",
             "node-cache-canary-sources-only",
             "node-cache-canary-invalidate-lock",
+            "node-cache-canary-invalidate-libc",
+            "node-cache-canary-invalidate-arch",
         ):
             self.assertIn(name, data)
+        self.assertEqual(data["node-cache-canary-warm"]["needs"], ["node-cache-canary-cold"])
+        self.assertEqual(data["node-cache-canary-warm2"]["needs"], ["node-cache-canary-warm"])
+        self.assertEqual(
+            data["node-cache-canary-sources-only"]["needs"], ["node-cache-canary-warm2"]
+        )
+        # Build-pool Node tag only (checks pool not required for this consumer).
+        self.assertEqual(base["tags"], ["ajrly-kubernetes"])
+        self.assertNotIn("ajrly-kubernetes-checks", text)
+        # Full pnpm install (trusted source scripts risk), not fetch-only.
+        install_script = "\n".join(str(s) for s in data[".node_cache_consumer_install"]["script"])
+        self.assertIn("pnpm install", install_script)
+        self.assertIn("local_store_warm_not_persistent", install_script)
+        self.assertIn("persistent_canonical_restore", install_script)
+        self.assertNotIn("publish_store", install_script)
         # Must not be wired into the default reusable pipeline.
         pipeline_text = PIPELINE_YML.read_text()
         self.assertNotIn("node-cache-consumer.yml", pipeline_text)

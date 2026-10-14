@@ -215,6 +215,21 @@ def format_restore_summary(result: RestoreResult, *, key: str = "") -> str:
     )
 
 
+def acceptance_class_for_restore(status: str, *, local_store_warm: bool = False) -> str:
+    """Classify canary measurements so local same-job warm is never a persistent hit.
+
+    - persistent_canonical_restore: verified S3 archive restore (producer present)
+    - miss_no_fabricated_hit: restore miss/rejected/disabled; no hit claimed
+    - local_store_warm_not_persistent: pnpm filled/reused store inside the same job only
+    """
+    normalized = (status or "").strip().lower()
+    if normalized == "hit":
+        return "persistent_canonical_restore"
+    if local_store_warm:
+        return "local_store_warm_not_persistent"
+    return "miss_no_fabricated_hit"
+
+
 def format_restore_report(
     result: RestoreResult,
     *,
@@ -222,6 +237,9 @@ def format_restore_report(
     phase: str = "",
     install_elapsed_s: Optional[float] = None,
     upstream_hosts: Optional[Iterable[str]] = None,
+    local_store_warm: bool = False,
+    store_bytes: Optional[int] = None,
+    npm_request_estimate: Optional[int] = None,
 ) -> dict:
     """Machine-readable restore metrics for canary cold/warm/sources-only phases.
 
@@ -241,9 +259,17 @@ def format_restore_report(
         "npm_only": bool(hosts) and all(
             host == "npm.ajrly.com" or host.endswith(".ajrly.com") for host in hosts
         ),
+        "acceptance_class": acceptance_class_for_restore(
+            result.status, local_store_warm=local_store_warm
+        ),
+        "local_store_warm": bool(local_store_warm),
     }
     if install_elapsed_s is not None:
         report["install_elapsed_s"] = round(float(install_elapsed_s), 6)
+    if store_bytes is not None:
+        report["store_bytes"] = int(store_bytes)
+    if npm_request_estimate is not None:
+        report["npm_request_estimate"] = int(npm_request_estimate)
     return report
 
 
@@ -743,6 +769,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--install-elapsed", type=float, default=None)
     parser.add_argument("--upstream-host", action="append", default=[])
+    parser.add_argument("--local-store-warm", action="store_true", default=False)
+    parser.add_argument("--store-bytes", type=int, default=None)
+    parser.add_argument("--npm-request-estimate", type=int, default=None)
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
 
@@ -787,6 +816,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             phase=args.phase,
             install_elapsed_s=args.install_elapsed,
             upstream_hosts=args.upstream_host,
+            local_store_warm=args.local_store_warm,
+            store_bytes=args.store_bytes,
+            npm_request_estimate=args.npm_request_estimate,
         ), sort_keys=True))
         return 0
 
@@ -797,6 +829,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             print(json.dumps(format_restore_report(
                 result, phase=args.phase or "restore", install_elapsed_s=args.install_elapsed,
                 upstream_hosts=args.upstream_host,
+                local_store_warm=args.local_store_warm,
+                store_bytes=args.store_bytes,
+                npm_request_estimate=args.npm_request_estimate,
             ), sort_keys=True))
         else:
             print(format_restore_summary(result))
@@ -816,6 +851,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             phase=args.phase or "restore",
             install_elapsed_s=args.install_elapsed,
             upstream_hosts=args.upstream_host,
+            local_store_warm=args.local_store_warm,
+            store_bytes=args.store_bytes,
+            npm_request_estimate=args.npm_request_estimate,
         ), sort_keys=True))
     else:
         print(format_restore_summary(result, key=key))
