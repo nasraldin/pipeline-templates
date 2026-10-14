@@ -55,7 +55,8 @@ variables:
   variables:
     GIT_STRATEGY: none
     AJRLY_TEMPLATES_PROJECT_ID: "1"
-    AJRLY_TEMPLATES_REF: codex/ci-cache-templates
+    # Do NOT set AJRLY_TEMPLATES_REF here — inherit the project include pin (immutable SHA).
+    # A mutable branch tip (e.g. codex/ci-cache-templates) drifts from the compile-time include.
     AJRLY_DEPENDENCY_CACHE_ENABLED: "true"
     AJRLY_NPM_REGISTRY: https://npm.ajrly.com/
     PNPM_CONFIG_NETWORK_CONCURRENCY: "4"
@@ -79,6 +80,14 @@ variables:
         echo "node-cache-canary: AJRLY_GITHUB_READ_TOKEN missing" >&2
         exit 1
       fi
+      # Immutable templates pin only (must match project include ref SHA).
+      case "${AJRLY_TEMPLATES_REF:-}" in
+        [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *)
+          echo "node-cache-canary: AJRLY_TEMPLATES_REF must be immutable 40-char SHA (got '${AJRLY_TEMPLATES_REF:-}')" >&2
+          exit 1
+          ;;
+      esac
       # Store restore path requires installer JWT + canonical reader mapping.
       if [ "${AJRLY_DEPENDENCY_CACHE_ENABLED:-false}" = "true" ]; then
         if [ -z "${AJRLY_NPM_INSTALL_TOKEN:-}" ]; then
@@ -102,6 +111,14 @@ variables:
       curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
       "http://192.168.68.12/api/v4/projects/${AJRLY_TEMPLATES_PROJECT_ID}/repository/files/ajrly%2Fscripts%2Fdependency_cache.py/raw?ref=$AJRLY_TEMPLATES_REF"
       --output /tmp/ajrly-dependency-cache.py
+    # Server metadata authority: reject branch drift / caller-written trust.
+    - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
+    - |
+      META=$(python3 /tmp/ajrly-dependency-cache.py file-metadata --ref "$AJRLY_TEMPLATES_REF" --script dependency_cache.py)
+      echo "$META" | tee /tmp/ajrly-dependency-cache.meta.json
+      LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
+      SERVER_SHA=$(python3 -c "import json;print(json.load(open('/tmp/ajrly-dependency-cache.meta.json'))['content_sha256'])")
+      test "$LOCAL_SHA" = "$SERVER_SHA"
     # Exact GitHub checkout BEFORE any dependency key/restore (GIT_STRATEGY=none).
     - python3 /tmp/ajrly-source.py checkout --destination "$CI_PROJECT_DIR"
     - test -f "$CI_PROJECT_DIR/.ajrly-source.json"
@@ -114,7 +131,8 @@ variables:
         pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
         # Capture restore metrics; never claim a Runner cache hit as a store hit.
         RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
-          --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}" --json --phase "${NODE_CACHE_PHASE:-restore}")
+          --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}" --json --phase "${NODE_CACHE_PHASE:-restore}" \
+          --configured-registry "${AJRLY_NPM_REGISTRY}")
         echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
         export AJRLY_DEPENDENCY_CACHE_LAST_STATUS=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json'))['status'])")
         export AJRLY_DEPENDENCY_CACHE_LAST_REASON=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('reason',''))")
@@ -141,16 +159,18 @@ variables:
       START=$(date +%s)
       # Full trusted-source closure: pnpm install with scripts (approved root SHA).
       # No --ignore-scripts: scripts risk accepted for pinned AJRLY_SOURCE_SHA only.
-      pnpm install --ignore-pnpmfile --frozen-lockfile --store-dir "$CI_PROJECT_DIR/.pnpm-store"
+      # Capture installer log for real Progress counters (not package.json heuristics).
+      pnpm install --ignore-pnpmfile --frozen-lockfile --store-dir "$CI_PROJECT_DIR/.pnpm-store" \
+        2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-${PHASE}.log"
       END=$(date +%s)
       ELAPSED=$((END - START))
       STORE_BYTES=$(du -sb "$CI_PROJECT_DIR/.pnpm-store" 2>/dev/null | awk '{print $1}')
       STORE_BYTES=${STORE_BYTES:-0}
-      # Rough npm request estimate from pnpm store index count (non-secret).
-      NPM_REQ=$(find "$CI_PROJECT_DIR/.pnpm-store" -type f -name 'package.json' 2>/dev/null | wc -l | tr -d ' ')
-      # Upstream host proof: registry must remain npm.ajrly.com (installer only).
+      # Configured registry is pnpm config only — NOT observed network host traffic.
       REGISTRY=$(pnpm config get registry)
       test "$REGISTRY" = "https://npm.ajrly.com/" -o "$REGISTRY" = "https://npm.ajrly.com"
+      PROGRESS_LINE=$(grep -E 'Progress: resolved [0-9]+, reused [0-9]+, downloaded [0-9]+, added [0-9]+, done' \
+        "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-${PHASE}.log" | tail -n1 || true)
       LOCAL_WARM_FLAG=""
       if [ "$RESTORE_STATUS" != "hit" ]; then
         # Same-job store fill after miss — measure but NEVER claim persistent restore.
@@ -160,10 +180,18 @@ variables:
         ACCEPT_HINT="persistent_canonical_restore"
       fi
       # shellcheck disable=SC2086
-      python3 /tmp/ajrly-dependency-cache.py report --phase "$PHASE" \
-        --install-elapsed "$ELAPSED" --upstream-host npm.ajrly.com \
-        --store-bytes "$STORE_BYTES" --npm-request-estimate "$NPM_REQ" \
-        $LOCAL_WARM_FLAG \
+      # Do not pass --upstream-host: that hardcodes config as fake observed traffic.
+      # observed_registry_hosts stays empty unless real network/source evidence exists.
+      REPORT_ARGS=(
+        report --phase "$PHASE"
+        --install-elapsed "$ELAPSED"
+        --configured-registry "$REGISTRY"
+        --store-bytes "$STORE_BYTES"
+      )
+      if [ -n "$PROGRESS_LINE" ]; then
+        REPORT_ARGS+=(--pnpm-progress "$PROGRESS_LINE")
+      fi
+      python3 /tmp/ajrly-dependency-cache.py "${REPORT_ARGS[@]}" $LOCAL_WARM_FLAG \
         | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-${PHASE}.json"
       # Assert acceptance_class matches restore reality (no fabricated persistent hit).
       PHASE="$PHASE" RESTORE_STATUS="$RESTORE_STATUS" python3 - <<'PY'
@@ -177,17 +205,21 @@ variables:
       else:
           assert cls == "local_store_warm_not_persistent", cls
           assert cls != "persistent_canonical_restore"
-      print("acceptance_class_ok", cls)
+      assert "configured_registry" in report
+      assert report.get("observed_registry_hosts") == []
+      assert "npm_only" not in report, "config check must not set npm_only without observed hosts"
+      print("acceptance_class_ok", cls, "configured_registry", report["configured_registry"])
       PY
       # Fail closed: never leave a node_modules GitLab cache stanza (assert absent).
       test ! -d "$CI_PROJECT_DIR/node_modules" -o "${ALLOW_NODE_MODULES:-0}" = "1" || true
-      echo "node-cache-canary phase=$PHASE restore=$RESTORE_STATUS acceptance=$ACCEPT_HINT install_elapsed_s=$ELAPSED store_bytes=$STORE_BYTES npm_req~$NPM_REQ registry=$REGISTRY"
+      echo "node-cache-canary phase=$PHASE restore=$RESTORE_STATUS acceptance=$ACCEPT_HINT install_elapsed_s=$ELAPSED store_bytes=$STORE_BYTES configured_registry=$REGISTRY progress=${PROGRESS_LINE:-none}"
   artifacts:
     when: always
     expire_in: 3 days
     paths:
       - .ci-tmp/dependency-restore.json
       - .ci-tmp/dependency-phase-*.json
+      - .ci-tmp/pnpm-install-*.log
 
 # Cold: empty job workspace → restore miss (or hit if producer already published), then full install.
 node-cache-canary-cold:
@@ -226,29 +258,40 @@ node-cache-canary-sources-only:
       test "$KEY_BEFORE" = "$KEY_AFTER"
       RESTORE_STATUS="${AJRLY_DEPENDENCY_CACHE_LAST_STATUS:-miss}"
       START=$(date +%s)
-      pnpm install --ignore-pnpmfile --frozen-lockfile --store-dir "$CI_PROJECT_DIR/.pnpm-store"
+      pnpm install --ignore-pnpmfile --frozen-lockfile --store-dir "$CI_PROJECT_DIR/.pnpm-store" \
+        2>&1 | tee "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-sources-only.log"
       END=$(date +%s)
       ELAPSED=$((END - START))
       STORE_BYTES=$(du -sb "$CI_PROJECT_DIR/.pnpm-store" 2>/dev/null | awk '{print $1}')
       STORE_BYTES=${STORE_BYTES:-0}
-      NPM_REQ=$(find "$CI_PROJECT_DIR/.pnpm-store" -type f -name 'package.json' 2>/dev/null | wc -l | tr -d ' ')
+      REGISTRY=$(pnpm config get registry)
+      PROGRESS_LINE=$(grep -E 'Progress: resolved [0-9]+, reused [0-9]+, downloaded [0-9]+, added [0-9]+, done' \
+        "$CI_PROJECT_DIR/.ci-tmp/pnpm-install-sources-only.log" | tail -n1 || true)
       LOCAL_WARM_FLAG=""
       if [ "$RESTORE_STATUS" != "hit" ]; then
         LOCAL_WARM_FLAG="--local-store-warm"
       fi
       # shellcheck disable=SC2086
-      python3 /tmp/ajrly-dependency-cache.py report --phase sources-only \
-        --key "$KEY_AFTER" --install-elapsed "$ELAPSED" --upstream-host npm.ajrly.com \
-        --store-bytes "$STORE_BYTES" --npm-request-estimate "$NPM_REQ" \
-        $LOCAL_WARM_FLAG \
+      REPORT_ARGS=(
+        report --phase sources-only
+        --key "$KEY_AFTER"
+        --install-elapsed "$ELAPSED"
+        --configured-registry "$REGISTRY"
+        --store-bytes "$STORE_BYTES"
+      )
+      if [ -n "$PROGRESS_LINE" ]; then
+        REPORT_ARGS+=(--pnpm-progress "$PROGRESS_LINE")
+      fi
+      python3 /tmp/ajrly-dependency-cache.py "${REPORT_ARGS[@]}" $LOCAL_WARM_FLAG \
         | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-phase-sources-only.json"
-      echo "node-cache-canary sources-only key_stable=1 restore=$RESTORE_STATUS install_elapsed_s=$ELAPSED"
+      echo "node-cache-canary sources-only key_stable=1 restore=$RESTORE_STATUS install_elapsed_s=$ELAPSED configured_registry=$REGISTRY"
   artifacts:
     when: always
     expire_in: 3 days
     paths:
       - .ci-tmp/dependency-restore.json
       - .ci-tmp/dependency-phase-*.json
+      - .ci-tmp/pnpm-install-*.log
 
 # Explicit invalidation probes (fail closed): lock / libc / arch must change key.
 node-cache-canary-invalidate-lock:

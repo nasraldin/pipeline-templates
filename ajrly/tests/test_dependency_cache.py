@@ -7,6 +7,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tarfile
@@ -174,21 +175,26 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertTrue(base.startswith("dep-v1-"))
         self.assertRegex(base, r"^dep-v1-[0-9a-f]{64}$")
 
-    def test_restore_report_json_omits_secrets_and_marks_npm_only(self):
+    def test_restore_report_separates_configured_vs_observed_registry(self):
+        """Caller --upstream-host / pnpm config is configured_registry, not traffic proof."""
         result = self.mod.RestoreResult("hit", 4096, 1.25, "")
+        # Config-only path: no observed hosts → must not claim npm_only / observed traffic.
         report = self.mod.format_restore_report(
             result,
             key="dep-v1-" + ("a" * 64),
             phase="warm",
             install_elapsed_s=3.5,
-            upstream_hosts=["npm.ajrly.com", "npm.ajrly.com"],
+            configured_registry="https://npm.ajrly.com/",
+            observed_registry_hosts=[],
         )
         self.assertEqual(report["status"], "hit")
         self.assertEqual(report["phase"], "warm")
         self.assertEqual(report["bytes"], 4096)
         self.assertEqual(report["install_elapsed_s"], 3.5)
-        self.assertTrue(report["npm_only"])
-        self.assertEqual(report["upstream_hosts"], ["npm.ajrly.com"])
+        self.assertEqual(report["configured_registry"], "https://npm.ajrly.com/")
+        self.assertEqual(report["observed_registry_hosts"], [])
+        self.assertNotIn("npm_only", report)
+        self.assertNotIn("upstream_hosts", report)
         self.assertEqual(report["max_compressed_bytes"], 2 * 1024 ** 3)
         self.assertEqual(report["acceptance_class"], "persistent_canonical_restore")
         self.assertFalse(report["local_store_warm"])
@@ -196,11 +202,29 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertNotIn("AKIA", blob)
         self.assertNotIn("secret", blob.lower())
         self.assertNotIn("X-Amz", blob)
-        # External registry host must not claim npm_only.
+
+        # Observed hosts only set npm_only from real network/source evidence.
+        observed = self.mod.format_restore_report(
+            result,
+            configured_registry="https://npm.ajrly.com/",
+            observed_registry_hosts=["npm.ajrly.com", "npm.ajrly.com"],
+        )
+        self.assertEqual(observed["observed_registry_hosts"], ["npm.ajrly.com"])
+        self.assertTrue(observed["npm_only"])
         mixed = self.mod.format_restore_report(
-            result, upstream_hosts=["npm.ajrly.com", "registry.npmjs.org"]
+            result,
+            configured_registry="https://npm.ajrly.com/",
+            observed_registry_hosts=["npm.ajrly.com", "registry.npmjs.org"],
         )
         self.assertFalse(mixed["npm_only"])
+        # Legacy caller upstream_hosts alone must not invent npm_only success.
+        legacy = self.mod.format_restore_report(
+            result, upstream_hosts=["npm.ajrly.com"]
+        )
+        self.assertEqual(legacy.get("configured_registry", ""), "")
+        self.assertEqual(legacy["observed_registry_hosts"], [])
+        self.assertNotIn("npm_only", legacy)
+
         miss = self.mod.format_restore_report(
             self.mod.RestoreResult("miss", 0, 0.1, "not_found"),
             phase="cold",
@@ -212,15 +236,92 @@ class DependencyCacheTests(unittest.TestCase):
             phase="cold",
             local_store_warm=True,
             store_bytes=1024,
-            npm_request_estimate=12,
+            pnpm_progress={"resolved": 12, "reused": 0, "downloaded": 12, "added": 12},
         )
         self.assertEqual(local_warm["acceptance_class"], "local_store_warm_not_persistent")
         self.assertEqual(local_warm["store_bytes"], 1024)
-        self.assertEqual(local_warm["npm_request_estimate"], 12)
+        self.assertEqual(local_warm["pnpm_progress"]["downloaded"], 12)
+        self.assertNotIn("npm_request_estimate", local_warm)
         self.assertNotEqual(
             local_warm["acceptance_class"], "persistent_canonical_restore",
             "same-job local store warm must never claim persistent restore acceptance",
         )
+        # Zero package-count heuristic must not fabricate upstream request proof.
+        zero_est = self.mod.format_restore_report(
+            result, npm_request_estimate=0, store_bytes=2048,
+        )
+        self.assertNotIn("npm_request_estimate", zero_est)
+
+    def test_immutable_templates_ref_uses_server_file_metadata(self):
+        """Script fetch must pin immutable SHA; server metadata is authority not caller trust."""
+        branch = "codex/ci-cache-templates"
+        with self.assertRaises(ValueError) as raised:
+            self.mod.require_immutable_templates_ref(branch)
+        self.assertIn("templates_ref_not_immutable", str(raised.exception))
+
+        pin = "b318ecdf953767b2b7ac171b944a7646c37b250d"
+        self.assertEqual(self.mod.require_immutable_templates_ref(pin), pin)
+
+        url = self.mod.templates_script_raw_url(
+            "http://192.168.68.12/api/v4/projects/1", pin, "dependency_cache.py"
+        )
+        self.assertIn(f"ref={pin}", url)
+        with self.assertRaises(ValueError):
+            self.mod.templates_script_raw_url(
+                "http://192.168.68.12/api/v4/projects/1", branch, "dependency_cache.py"
+            )
+
+        server_meta = {
+            "file_name": "dependency_cache.py",
+            "ref": pin,
+            "commit_id": pin,
+            "last_commit_id": "6d2bf3a5317b89125ddaa56ca65b1fb77f70e82c",
+            "content_sha256": "bcdb6c4aa9e6e5382fcb7732a63b93fc06883a2fb85cd8e008ac42859e264d28",
+            "size": 35410,
+        }
+        # Caller-written trust fields must not override server metadata.
+        verified = self.mod.verify_templates_file_metadata(
+            server_meta,
+            expected_ref=pin,
+            caller_trust={"commit_id": "f" * 40, "content_sha256": "0" * 64},
+        )
+        self.assertEqual(verified["commit_id"], pin)
+        self.assertEqual(
+            verified["content_sha256"],
+            "bcdb6c4aa9e6e5382fcb7732a63b93fc06883a2fb85cd8e008ac42859e264d28",
+        )
+        with self.assertRaises(ValueError) as mismatch:
+            self.mod.verify_templates_file_metadata(
+                {**server_meta, "commit_id": "a" * 40},
+                expected_ref=pin,
+            )
+        self.assertIn("templates_ref_metadata_mismatch", str(mismatch.exception))
+
+    def test_closure_timing_ratio_report_persists_cold_warm_variance(self):
+        """Persist cold-miss + warm restore/install timings; no whole-pipeline 25% claim."""
+        phases = [
+            {"phase": "cold", "status": "miss", "install_elapsed_s": 545.0,
+             "restore_duration_s": 0.047, "pnpm_progress": {
+                 "resolved": 2778, "reused": 0, "downloaded": 2611, "added": 2748}},
+            {"phase": "warm", "status": "hit", "install_elapsed_s": 219.0,
+             "restore_duration_s": 78.2, "pnpm_progress": {
+                 "resolved": 2778, "reused": 2778, "downloaded": 0, "added": 2748}},
+            {"phase": "warm2", "status": "hit", "install_elapsed_s": 225.0,
+             "restore_duration_s": 74.5, "pnpm_progress": {
+                 "resolved": 2778, "reused": 2778, "downloaded": 0, "added": 2748}},
+        ]
+        summary = self.mod.closure_timing_ratio_report(phases)
+        self.assertEqual(summary["cold_install_s"], 545.0)
+        self.assertAlmostEqual(summary["warm_install_mean_s"], 222.0)
+        self.assertAlmostEqual(summary["warm_restore_mean_s"], 76.35, places=2)
+        # Wall = restore + install for warm vs cold install-only baseline.
+        self.assertIn("warm_total_mean_s", summary)
+        self.assertIn("install_wall_reduction_ratio", summary)
+        self.assertLess(summary["install_wall_reduction_ratio"], 0.55)
+        self.assertGreater(summary["install_wall_reduction_ratio"], 0.35)
+        self.assertFalse(summary["whole_pipeline_25pct_claim"])
+        self.assertEqual(summary["objective_target_status"], "pending")
+        self.assertIn("variance", summary)
 
     def test_restore_requires_verified_source_manifest(self):
         key, reader = self._publish_local({"index/v1": b"pkg\n"})
@@ -505,11 +606,12 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(public["auth_token"], "")
 
     def test_path_helper_encodes_templates_script(self):
+        pin = "b318ecdf953767b2b7ac171b944a7646c37b250d"
         url = self.mod.templates_script_raw_url(
-            "http://192.168.68.12/api/v4/projects/1", "codex/ci-cache-templates", "dependency_cache.py"
+            "http://192.168.68.12/api/v4/projects/1", pin, "dependency_cache.py"
         )
         self.assertIn("ajrly%2Fscripts%2Fdependency_cache.py", url)
-        self.assertIn("ref=codex%2Fci-cache-templates", url)
+        self.assertIn(f"ref={pin}", url)
         self.assertEqual(
             self.mod.TEMPLATES_SCRIPT_RELATIVE["dependency_cache"],
             "ajrly/scripts/dependency_cache.py",
@@ -568,6 +670,13 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(base["variables"]["GIT_STRATEGY"], "none")
         self.assertEqual(base["variables"]["AJRLY_DEPENDENCY_CACHE_ENABLED"], "true")
         self.assertEqual(base["variables"]["AJRLY_NPM_REGISTRY"], "https://npm.ajrly.com/")
+        # Must not override include/project immutable SHA pin with a mutable branch tip.
+        templates_ref = str(base["variables"].get("AJRLY_TEMPLATES_REF", ""))
+        self.assertNotEqual(templates_ref, "codex/ci-cache-templates")
+        self.assertTrue(
+            re.fullmatch(r"[0-9a-f]{40}", templates_ref) or templates_ref == "",
+            "AJRLY_TEMPLATES_REF must be empty (inherit pin) or an immutable 40-char SHA",
+        )
         # Runner config allows IfNotPresent only (Always was rejected on pipeline 459).
         self.assertEqual(base["image"]["pull_policy"], "if-not-present")
         self.assertNotIn("cache", base)
@@ -578,6 +687,14 @@ class DependencyCacheTests(unittest.TestCase):
         checkout_idx = next(i for i, s in enumerate(steps) if "ajrly-source.py checkout" in s)
         restore_idx = next(i for i, s in enumerate(steps) if "dependency-cache.py restore" in s or "ajrly-dependency-cache.py restore" in s)
         self.assertLess(checkout_idx, restore_idx)
+        before = "\n".join(steps)
+        self.assertIn("require-immutable-ref", before)
+        self.assertIn("file-metadata", before)
+        self.assertNotIn("--upstream-host npm.ajrly.com", text)
+        self.assertIn("configured_registry", text)
+        self.assertIn("observed_registry_hosts", text)
+        self.assertIn("--pnpm-progress", text)
+        self.assertIn("--configured-registry", text)
         # No ordinary writer / turbo broker enable on canary jobs (comments may deny-list).
         self.assertNotRegex(text, r"(?m)^\s*[^#]*\bpublish_store\b")
         self.assertNotIn("AJRLY_TURBO_BROKER_ENABLED: \"true\"", text)

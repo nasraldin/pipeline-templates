@@ -36,6 +36,9 @@ DEFAULT_PREFIX = "canonical/"
 SOURCE_MANIFEST = ".ajrly-source.json"
 PATCH_DIRNAME = "patches"
 KEY_RE = re.compile(rf"^{re.escape(KEY_PREFIX)}[0-9a-f]{{64}}$")
+IMMUTABLE_TEMPLATES_REF_RE = re.compile(r"^[0-9a-f]{40}$")
+PRIVATE_NPM_HOST_SUFFIX = ".ajrly.com"
+PRIVATE_NPM_HOST = "npm.ajrly.com"
 
 TEMPLATES_SCRIPT_RELATIVE = {
     "source": "ajrly/scripts/source.py",
@@ -60,15 +63,76 @@ class RestoreResult:
     reason: str = ""
 
 
+def require_immutable_templates_ref(ref: str) -> str:
+    """Reject mutable branch tips; canary script fetch must use an exact 40-char SHA."""
+    cleaned = (ref or "").strip()
+    if not IMMUTABLE_TEMPLATES_REF_RE.fullmatch(cleaned):
+        raise ValueError("templates_ref_not_immutable")
+    return cleaned
+
+
 def templates_script_raw_url(project_api: str, ref: str, script: str = "dependency_cache.py") -> str:
-    """Path helper for GitLab raw file fetch of an ajrly/scripts module."""
+    """Path helper for GitLab raw file fetch of an ajrly/scripts module (immutable SHA only)."""
+    pin = require_immutable_templates_ref(ref)
     if "/" in script or script.startswith("."):
         relative = script
     else:
         relative = f"ajrly/scripts/{script}"
     encoded = urllib.parse.quote(relative, safe="")
     base = project_api.rstrip("/")
-    return f"{base}/repository/files/{encoded}/raw?ref={urllib.parse.quote(ref, safe='')}"
+    return f"{base}/repository/files/{encoded}/raw?ref={urllib.parse.quote(pin, safe='')}"
+
+
+def verify_templates_file_metadata(
+    server_meta: Mapping[str, object],
+    *,
+    expected_ref: str,
+    caller_trust: Optional[Mapping[str, object]] = None,
+) -> Dict[str, object]:
+    """Trust GitLab repository-file API metadata; ignore caller-written trust fields."""
+    del caller_trust  # Explicitly unused: never authorize from caller-supplied digests.
+    pin = require_immutable_templates_ref(expected_ref)
+    commit_id = str(server_meta.get("commit_id") or "").strip()
+    content_sha = str(server_meta.get("content_sha256") or "").strip()
+    if commit_id != pin:
+        raise ValueError("templates_ref_metadata_mismatch")
+    if not re.fullmatch(r"[0-9a-f]{64}", content_sha):
+        raise ValueError("templates_ref_metadata_mismatch")
+    return {
+        "file_name": str(server_meta.get("file_name") or ""),
+        "ref": pin,
+        "commit_id": commit_id,
+        "last_commit_id": str(server_meta.get("last_commit_id") or ""),
+        "content_sha256": content_sha,
+        "size": int(server_meta.get("size") or 0),
+    }
+
+
+def fetch_templates_file_metadata(
+    project_api: str,
+    ref: str,
+    script: str = "dependency_cache.py",
+    *,
+    job_token: str = "",
+    opener=None,
+) -> Dict[str, object]:
+    """GET repository/files metadata for the immutable pin (server authority)."""
+    pin = require_immutable_templates_ref(ref)
+    if "/" in script or script.startswith("."):
+        relative = script
+    else:
+        relative = f"ajrly/scripts/{script}"
+    encoded = urllib.parse.quote(relative, safe="")
+    url = f"{project_api.rstrip('/')}/repository/files/{encoded}?ref={urllib.parse.quote(pin, safe='')}"
+    headers = {}
+    token = (job_token or "").strip()
+    if token:
+        headers["JOB-TOKEN"] = token
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    open_url = opener or urllib.request.urlopen
+    with open_url(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return verify_templates_file_metadata(payload, expected_ref=pin)
 
 
 def detect_platform() -> str:
@@ -230,6 +294,20 @@ def acceptance_class_for_restore(status: str, *, local_store_warm: bool = False)
     return "miss_no_fabricated_hit"
 
 
+def _normalize_registry_host(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if "://" in text:
+        return urllib.parse.urlparse(text).netloc.lower()
+    return text.split("/")[0].lower()
+
+
+def _is_private_npm_host(host: str) -> bool:
+    cleaned = _normalize_registry_host(host)
+    return cleaned == PRIVATE_NPM_HOST or cleaned.endswith(PRIVATE_NPM_HOST_SUFFIX)
+
+
 def format_restore_report(
     result: RestoreResult,
     *,
@@ -237,15 +315,28 @@ def format_restore_report(
     phase: str = "",
     install_elapsed_s: Optional[float] = None,
     upstream_hosts: Optional[Iterable[str]] = None,
+    configured_registry: str = "",
+    observed_registry_hosts: Optional[Iterable[str]] = None,
     local_store_warm: bool = False,
     store_bytes: Optional[int] = None,
     npm_request_estimate: Optional[int] = None,
+    pnpm_progress: Optional[Mapping[str, int]] = None,
 ) -> dict:
     """Machine-readable restore metrics for canary cold/warm/sources-only phases.
 
     Never includes secrets, signed URLs, or credential material.
+
+    ``configured_registry`` is pnpm/env config only. ``observed_registry_hosts`` is
+    actual network/source evidence. Caller ``--upstream-host`` alone must not set
+    ``npm_only`` (config check ≠ observed host traffic).
     """
-    hosts = sorted({str(host).strip() for host in (upstream_hosts or []) if str(host).strip()})
+    del upstream_hosts  # Legacy CLI flag retained for argv compat; never treated as observation.
+    configured = (configured_registry or "").strip()
+    observed = sorted({
+        _normalize_registry_host(host)
+        for host in (observed_registry_hosts or [])
+        if _normalize_registry_host(host)
+    })
     report = {
         "phase": phase or "restore",
         "status": result.status,
@@ -255,22 +346,82 @@ def format_restore_report(
         "key_prefix": (key[:18] + "…") if key else "",
         "key_schema": KEY_PREFIX.rstrip("-"),
         "max_compressed_bytes": MAX_COMPRESSED_BYTES,
-        "upstream_hosts": hosts,
-        "npm_only": bool(hosts) and all(
-            host == "npm.ajrly.com" or host.endswith(".ajrly.com") for host in hosts
-        ),
+        "configured_registry": configured,
+        "observed_registry_hosts": observed,
         "acceptance_class": acceptance_class_for_restore(
             result.status, local_store_warm=local_store_warm
         ),
         "local_store_warm": bool(local_store_warm),
     }
+    if observed:
+        report["npm_only"] = all(_is_private_npm_host(host) for host in observed)
     if install_elapsed_s is not None:
         report["install_elapsed_s"] = round(float(install_elapsed_s), 6)
     if store_bytes is not None:
         report["store_bytes"] = int(store_bytes)
-    if npm_request_estimate is not None:
+    # Never publish a zero package-count heuristic as upstream request proof.
+    if npm_request_estimate is not None and int(npm_request_estimate) > 0:
         report["npm_request_estimate"] = int(npm_request_estimate)
+    if pnpm_progress is not None:
+        progress = {
+            key_name: int(pnpm_progress[key_name])
+            for key_name in ("resolved", "reused", "downloaded", "added")
+            if key_name in pnpm_progress
+        }
+        report["pnpm_progress"] = progress
     return report
+
+
+def parse_pnpm_progress_line(line: str) -> Optional[Dict[str, int]]:
+    """Parse a pnpm ``Progress: resolved N, reused N, downloaded N, added N`` line."""
+    match = re.search(
+        r"Progress:\s*resolved\s+(\d+),\s*reused\s+(\d+),\s*downloaded\s+(\d+),\s*added\s+(\d+)",
+        line or "",
+    )
+    if not match:
+        return None
+    return {
+        "resolved": int(match.group(1)),
+        "reused": int(match.group(2)),
+        "downloaded": int(match.group(3)),
+        "added": int(match.group(4)),
+    }
+
+
+def closure_timing_ratio_report(phases: Iterable[Mapping[str, object]]) -> dict:
+    """Summarize cold-miss vs warm restore+install timings without claiming whole-pipeline 25%."""
+    rows = [dict(phase) for phase in phases]
+    cold = next((row for row in rows if str(row.get("phase")) == "cold"), None)
+    warms = [row for row in rows if str(row.get("phase", "")).startswith("warm")]
+    if cold is None or not warms:
+        raise ValueError("closure_timing_requires_cold_and_warm")
+    cold_install = float(cold.get("install_elapsed_s") or 0.0)
+    warm_installs = [float(row.get("install_elapsed_s") or 0.0) for row in warms]
+    warm_restores = [float(row.get("restore_duration_s") or 0.0) for row in warms]
+    warm_install_mean = sum(warm_installs) / len(warm_installs)
+    warm_restore_mean = sum(warm_restores) / len(warm_restores)
+    warm_total_mean = warm_install_mean + warm_restore_mean
+    if cold_install <= 0:
+        raise ValueError("closure_timing_invalid_cold_install")
+    reduction = (cold_install - warm_total_mean) / cold_install
+    install_values = [cold_install, *warm_installs]
+    mean_install = sum(install_values) / len(install_values)
+    variance = sum((value - mean_install) ** 2 for value in install_values) / len(install_values)
+    return {
+        "cold_install_s": round(cold_install, 6),
+        "warm_install_mean_s": round(warm_install_mean, 6),
+        "warm_restore_mean_s": round(warm_restore_mean, 6),
+        "warm_total_mean_s": round(warm_total_mean, 6),
+        "install_wall_reduction_ratio": round(reduction, 6),
+        "variance": {
+            "install_elapsed_s": round(variance, 6),
+            "warm_install_spread_s": round(max(warm_installs) - min(warm_installs), 6),
+            "warm_restore_spread_s": round(max(warm_restores) - min(warm_restores), 6),
+        },
+        "whole_pipeline_25pct_claim": False,
+        "objective_target_status": "pending",
+        "phases": rows,
+    }
 
 
 def _cleanup(path: Path) -> None:
@@ -758,7 +909,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Ajrly dependency store cache helper")
     parser.add_argument(
         "command",
-        choices=["key", "restore", "configure-registry", "script-url", "report"],
+        choices=[
+            "key", "restore", "configure-registry", "script-url", "report",
+            "require-immutable-ref", "file-metadata", "timing-ratio",
+        ],
     )
     parser.add_argument("--root", default=".")
     parser.add_argument("--scope", default="full")
@@ -769,11 +923,53 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--install-elapsed", type=float, default=None)
     parser.add_argument("--upstream-host", action="append", default=[])
+    parser.add_argument("--configured-registry", default="")
+    parser.add_argument("--observed-registry-host", action="append", default=[])
+    parser.add_argument("--pnpm-progress", default="")
+    parser.add_argument("--timing-phases-json", default="")
     parser.add_argument("--local-store-warm", action="store_true", default=False)
     parser.add_argument("--store-bytes", type=int, default=None)
     parser.add_argument("--npm-request-estimate", type=int, default=None)
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
+
+    def _progress_from_args() -> Optional[Dict[str, int]]:
+        raw = (args.pnpm_progress or "").strip()
+        if not raw:
+            return None
+        if raw.startswith("{"):
+            payload = json.loads(raw)
+            return {k: int(payload[k]) for k in ("resolved", "reused", "downloaded", "added") if k in payload}
+        parsed = parse_pnpm_progress_line(raw)
+        if parsed is None:
+            raise SystemExit("invalid --pnpm-progress value")
+        return parsed
+
+    if args.command == "require-immutable-ref":
+        ref = args.ref or os.environ.get("AJRLY_TEMPLATES_REF", "")
+        print(require_immutable_templates_ref(ref))
+        return 0
+
+    if args.command == "file-metadata":
+        api = os.environ.get("CI_API_V4_URL", "http://192.168.68.12/api/v4")
+        project = os.environ.get("AJRLY_TEMPLATES_PROJECT_ID", "1")
+        ref = args.ref or os.environ.get("AJRLY_TEMPLATES_REF", "")
+        meta = fetch_templates_file_metadata(
+            f"{api}/projects/{project}",
+            ref,
+            args.script,
+            job_token=os.environ.get("CI_JOB_TOKEN", ""),
+        )
+        print(json.dumps(meta, sort_keys=True))
+        return 0
+
+    if args.command == "timing-ratio":
+        raw = (args.timing_phases_json or "").strip()
+        if not raw:
+            raise SystemExit("--timing-phases-json is required")
+        phases = json.loads(raw)
+        print(json.dumps(closure_timing_ratio_report(phases), sort_keys=True))
+        return 0
 
     if args.command == "script-url":
         api = os.environ.get("CI_API_V4_URL", "http://192.168.68.12/api/v4")
@@ -810,15 +1006,21 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             duration = 0.0
         key = args.key.strip() or (os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_KEY") or "").strip()
         result = RestoreResult(status, bytes_read, duration, reason)
+        configured = args.configured_registry.strip() or (
+            os.environ.get("AJRLY_NPM_REGISTRY") or os.environ.get("PNPM_CONFIG_REGISTRY") or ""
+        ).strip()
         print(json.dumps(format_restore_report(
             result,
             key=key,
             phase=args.phase,
             install_elapsed_s=args.install_elapsed,
             upstream_hosts=args.upstream_host,
+            configured_registry=configured,
+            observed_registry_hosts=args.observed_registry_host,
             local_store_warm=args.local_store_warm,
             store_bytes=args.store_bytes,
             npm_request_estimate=args.npm_request_estimate,
+            pnpm_progress=_progress_from_args(),
         ), sort_keys=True))
         return 0
 
@@ -826,12 +1028,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if os.environ.get("AJRLY_DEPENDENCY_CACHE_ENABLED", "false").lower() not in {"1", "true", "yes"}:
         result = RestoreResult("miss", 0, 0.0, "disabled")
         if args.as_json:
+            configured = args.configured_registry.strip() or (
+                os.environ.get("AJRLY_NPM_REGISTRY") or os.environ.get("PNPM_CONFIG_REGISTRY") or ""
+            ).strip()
             print(json.dumps(format_restore_report(
                 result, phase=args.phase or "restore", install_elapsed_s=args.install_elapsed,
                 upstream_hosts=args.upstream_host,
+                configured_registry=configured,
+                observed_registry_hosts=args.observed_registry_host,
                 local_store_warm=args.local_store_warm,
                 store_bytes=args.store_bytes,
                 npm_request_estimate=args.npm_request_estimate,
+                pnpm_progress=_progress_from_args(),
             ), sort_keys=True))
         else:
             print(format_restore_summary(result))
@@ -845,15 +1053,21 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         root, key, reader, scope=args.scope, toolchain=toolchain, prefix=prefix,
     )
     if args.as_json:
+        configured = args.configured_registry.strip() or (
+            os.environ.get("AJRLY_NPM_REGISTRY") or os.environ.get("PNPM_CONFIG_REGISTRY") or ""
+        ).strip()
         print(json.dumps(format_restore_report(
             result,
             key=key,
             phase=args.phase or "restore",
             install_elapsed_s=args.install_elapsed,
             upstream_hosts=args.upstream_host,
+            configured_registry=configured,
+            observed_registry_hosts=args.observed_registry_host,
             local_store_warm=args.local_store_warm,
             store_bytes=args.store_bytes,
             npm_request_estimate=args.npm_request_estimate,
+            pnpm_progress=_progress_from_args(),
         ), sort_keys=True))
     else:
         print(format_restore_summary(result, key=key))
