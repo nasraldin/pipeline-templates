@@ -32,6 +32,9 @@
     - |
       if [ -n "${AJRLY_NPM_REGISTRY:-}" ]; then
         python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
+        # The helper subprocess cannot export into this shell. Environment
+        # configuration takes precedence over the generated project .npmrc.
+        export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
       elif [ -n "${AJRLY_NPM_INSTALL_TOKEN:-}" ]; then
         echo "dependency-cache: AJRLY_NPM_INSTALL_TOKEN set without AJRLY_NPM_REGISTRY" >&2
         exit 1
