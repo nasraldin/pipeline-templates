@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import secrets
+import socket
 import subprocess
 import sys
 import tempfile
@@ -49,6 +50,12 @@ FORBIDDEN_UPSTREAM_HOSTS = (
 # Refresh before hard expiry so mid-artifact uploads are not cut off.
 REFRESH_SKEW_SECONDS = 60
 LOCAL_PROXY_HOST = "127.0.0.1"
+# Match authority TEAM; Turbo 2.11.7 sends TURBO_TEAM as ?slug=.
+DEFAULT_TEAM = "ajrly"
+ALLOWED_ARTIFACT_QUERY_KEYS = frozenset({"teamid", "slug"})
+MAX_PROXY_BODY_BYTES = 64 * 1024 * 1024
+PROXY_REQUEST_TIMEOUT = 60.0
+AUTHORITY_REQUEST_TIMEOUT = 15.0
 
 
 @dataclass(frozen=True)
@@ -103,6 +110,25 @@ def parse_config(env: Mapping[str, str]) -> BrokerConfig:
     )
 
 
+def sanitize_artifact_query(query: str, *, team: str) -> str:
+    """Mirror authority: only Turbo teamId/slug matching the grant team."""
+    if not query:
+        return ""
+    pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+    if not pairs:
+        raise ValueError("artifact query string rejected")
+    allowed: list[tuple[str, str]] = []
+    for key, value in pairs:
+        lowered = key.lower()
+        if lowered not in ALLOWED_ARTIFACT_QUERY_KEYS:
+            raise ValueError("artifact query parameter rejected")
+        if value != team:
+            raise ValueError("artifact team query mismatch")
+        out_key = "teamId" if lowered == "teamid" else "slug"
+        allowed.append((out_key, value))
+    return urllib.parse.urlencode(allowed)
+
+
 def request_grant(
     *,
     broker_url: str,
@@ -147,7 +173,7 @@ def request_grant(
     )
     open_fn = opener.open if opener is not None else urllib.request.urlopen
     try:
-        with open_fn(req, timeout=15) as response:
+        with open_fn(req, timeout=AUTHORITY_REQUEST_TIMEOUT) as response:
             raw = response.read()
     except urllib.error.HTTPError as error:
         _detail = error.read().decode("utf-8", "replace")[:200]
@@ -218,7 +244,7 @@ def export_env(
     turbo_token: str | None = None,
 ) -> dict[str, str]:
     """Export Turbo env. Prefer job-local proxy URL + static token when provided."""
-    team = str(grant.get("team") or "ajrly")
+    team = str(grant.get("team") or DEFAULT_TEAM)
     cache_mode = "local:rw,remote:rw" if config.scope == "write" else "local:rw,remote:r"
     api = turbo_api if turbo_api is not None else config.broker_url
     token = turbo_token if turbo_token is not None else str(grant["token"])
@@ -269,7 +295,7 @@ def _forward_to_authority(
     )
     open_fn = opener.open if opener is not None else urllib.request.urlopen
     try:
-        with open_fn(req, timeout=60) as response:
+        with open_fn(req, timeout=PROXY_REQUEST_TIMEOUT) as response:
             raw = response.read()
             resp_headers = {k.lower(): v for k, v in response.headers.items()}
             return int(response.status), resp_headers, raw
@@ -287,9 +313,13 @@ def make_local_proxy_handler(
 ) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
+        # Bound idle clients; body size enforced in _read_body.
+        timeout = PROXY_REQUEST_TIMEOUT
 
         def log_message(self, fmt: str, *args) -> None:  # noqa: A003
-            sys.stderr.write("local-turbo-proxy %s %s\n" % (self.command, self.path))
+            # Never echo full URLs (may include tokens in mistaken query forms).
+            path = self.path.split("?", 1)[0]
+            sys.stderr.write("local-turbo-proxy %s %s\n" % (self.command, path))
 
         def do_GET(self) -> None:  # noqa: N802
             self._dispatch()
@@ -317,7 +347,7 @@ def make_local_proxy_handler(
 
         def _read_body(self) -> bytes:
             length = int(self.headers.get("Content-Length", "0") or "0")
-            if length < 0 or length > 64 * 1024 * 1024:
+            if length < 0 or length > MAX_PROXY_BODY_BYTES:
                 raise ValueError("body too large")
             return self.rfile.read(length) if length else b""
 
@@ -357,14 +387,14 @@ def make_local_proxy_handler(
                 if not path.startswith("/v8/artifacts"):
                     self._json(403, {"error": "path not authorized for cache proxy"})
                     return
-                if parsed.query:
-                    self._json(403, {"error": "artifact query string rejected"})
-                    return
                 body = self._read_body() if self.command == "PUT" else b""
                 grant = session.current_grant()
+                team = str(grant.get("team") or DEFAULT_TEAM)
+                safe_query = sanitize_artifact_query(parsed.query, team=team)
+                forward_path = path + (f"?{safe_query}" if safe_query else "")
                 status, resp_headers, payload = _forward_to_authority(
                     method=self.command,
-                    path=self.path,
+                    path=forward_path,
                     body=body,
                     headers=lowered,
                     authority_base=session.broker_url,
@@ -374,9 +404,12 @@ def make_local_proxy_handler(
                 if status == 401 and b"grant expired" in payload.lower():
                     session.invalidate()
                     grant = session.current_grant(force=True)
+                    team = str(grant.get("team") or DEFAULT_TEAM)
+                    safe_query = sanitize_artifact_query(parsed.query, team=team)
+                    forward_path = path + (f"?{safe_query}" if safe_query else "")
                     status, resp_headers, payload = _forward_to_authority(
                         method=self.command,
-                        path=self.path,
+                        path=forward_path,
                         body=body,
                         headers=lowered,
                         authority_base=session.broker_url,
@@ -399,7 +432,12 @@ def make_local_proxy_handler(
 
 
 class LocalTurboProxy(ThreadingHTTPServer):
+    daemon_threads = True
+    # Cap concurrent Turbo artifact hops toward authority (matches server Semaphore 8).
+    request_queue_size = 8
+
     def server_bind(self) -> None:
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
         self.server_address = self.socket.getsockname()
         host, port = self.server_address[:2]
@@ -432,9 +470,28 @@ def _state_dir(env: Mapping[str, str]) -> Path:
     return root
 
 
-def _write_ready(path: Path, payload: dict) -> None:
-    path.write_text(json.dumps(payload, sort_keys=True) + "\n")
-    path.chmod(0o600)
+def _write_private_json(path: Path, payload: dict) -> None:
+    """Create mode 0600 before writing so the token is never briefly world-readable."""
+    raw = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(str(path), flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(raw)
+            fd = -1  # ownership transferred to fdopen
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def serve_from_state(state_path: Path) -> int:
@@ -456,7 +513,7 @@ def serve_from_state(state_path: Path) -> int:
     server = start_local_proxy(session=session, local_token=local_token)
     turbo_api = f"http://{LOCAL_PROXY_HOST}:{server.server_port}"
     ready_path = Path(state["ready_path"])
-    _write_ready(
+    _write_private_json(
         ready_path,
         {
             "turbo_api": turbo_api,
@@ -468,6 +525,7 @@ def serve_from_state(state_path: Path) -> int:
             "pid": os.getpid(),
         },
     )
+    # Child stderr is redirected by configure; keep messages free of tokens.
     print(
         json.dumps(
             {
@@ -488,6 +546,7 @@ def serve_from_state(state_path: Path) -> int:
     finally:
         server.shutdown()
         server.server_close()
+        _unlink_quiet(ready_path)
     return 0
 
 
@@ -502,6 +561,7 @@ def configure(
     Spawns a detached ``serve-state`` child so ``eval "$(... configure)"`` keeps a
     long-lived local proxy after the parent Python exits. Turbo continues using the
     same static TURBO_TOKEN while the child refreshes HMAC grants via CI_JOB_TOKEN.
+    Child stdout/stderr go to a job-tmp log (masked from eval capture).
     """
     env = dict(os.environ if env is None else env)
     config = parse_config(env)
@@ -516,8 +576,9 @@ def configure(
     local_token = secrets.token_urlsafe(32)
     ready_path = state_root / f"turbo-local-proxy-ready-{os.getpid()}.json"
     state_path = state_root / f"turbo-local-proxy-state-{os.getpid()}.json"
+    child: subprocess.Popen[bytes] | None = None
     if ready_path.exists():
-        ready_path.unlink()
+        _unlink_quiet(ready_path)
     state = {
         "broker_url": config.broker_url,
         "job_token": job_token,
@@ -525,13 +586,21 @@ def configure(
         "local_token": local_token,
         "ready_path": str(ready_path),
     }
-    _write_ready(state_path, state)
+    _write_private_json(state_path, state)
     try:
         if spawn:
-            log_path = state_root / "turbo-local-proxy.log"
+            log_path = state_root / f"turbo-local-proxy-{os.getpid()}.log"
+            # Mask child stdout/stderr from eval "$(configure)" — only exports on stdout.
             with open(log_path, "ab", buffering=0) as log_fh:
-                subprocess.Popen(
-                    [sys.executable, str(Path(__file__).resolve()), "serve-state", str(state_path)],
+                os.fchmod(log_fh.fileno(), 0o600)
+                child = subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(Path(__file__).resolve()),
+                        "serve-state",
+                        str(state_path),
+                    ],
+                    stdin=subprocess.DEVNULL,
                     stdout=log_fh,
                     stderr=log_fh,
                     start_new_session=True,
@@ -539,11 +608,26 @@ def configure(
                 )
             deadline = time.time() + wait_seconds
             while time.time() < deadline:
+                if child.poll() is not None:
+                    print(
+                        "turbo-broker: local proxy exited before ready",
+                        file=sys.stderr,
+                    )
+                    return 1
                 if ready_path.is_file() and ready_path.stat().st_size > 0:
                     break
                 time.sleep(0.05)
             else:
-                print("turbo-broker: local proxy failed to become ready", file=sys.stderr)
+                print(
+                    "turbo-broker: local proxy failed to become ready",
+                    file=sys.stderr,
+                )
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
                 return 1
             ready = json.loads(ready_path.read_text())
         else:
@@ -563,13 +647,21 @@ def configure(
                 "expires_at": grant.get("expires_at"),
                 "mode": "job-local-proxy-inprocess",
             }
-            _write_ready(ready_path, ready)
+            _write_private_json(ready_path, ready)
     except (RuntimeError, ValueError, json.JSONDecodeError, OSError) as error:
         print(f"turbo-broker: {error}", file=sys.stderr)
+        if child is not None and child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                child.kill()
+        _unlink_quiet(state_path)
+        _unlink_quiet(ready_path)
         return 1
     grant_stub = {
         "token": ready["turbo_token"],
-        "team": "ajrly",
+        "team": DEFAULT_TEAM,
         "grant_id": ready.get("grant_id"),
         "expires_at": ready.get("expires_at"),
     }
@@ -579,6 +671,7 @@ def configure(
         turbo_api=str(ready["turbo_api"]),
         turbo_token=str(ready["turbo_token"]),
     )
+    # stdout: shell exports only (eval-safe). Status metadata stays on stderr.
     sys.stdout.write(shell_exports(exports))
     print(
         json.dumps(
@@ -633,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         local_token = secrets.token_urlsafe(32)
         ready_path = state_root / f"turbo-local-proxy-ready-{os.getpid()}.json"
         state_path = state_root / f"turbo-local-proxy-state-{os.getpid()}.json"
-        _write_ready(
+        _write_private_json(
             state_path,
             {
                 "broker_url": config.broker_url,

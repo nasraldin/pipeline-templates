@@ -355,6 +355,69 @@ class TurboBrokerTests(unittest.TestCase):
             urllib.request.urlopen(req, timeout=2)
         self.assertEqual(ctx.exception.code, 403)
 
+    def test_local_proxy_accepts_turbo_slug_query_and_rejects_foreign_team(self):
+        authority = FakeAuthority()
+        thread = threading.Thread(
+            target=authority.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+        )
+        thread.start()
+        self.addCleanup(authority.shutdown)
+        self.addCleanup(authority.server_close)
+        auth_url = f"http://127.0.0.1:{authority.server_address[1]}"
+        clock = authority.clock
+        session = self.mod.GrantSession(
+            broker_url=auth_url,
+            job_token="live-job",
+            scope="read",
+            now=lambda: float(clock["now"]),
+            skew_seconds=60,
+        )
+        local_token = "static-turbo-token"
+        proxy = self.mod.start_local_proxy(
+            session=session, local_token=local_token, host="127.0.0.1", port=0
+        )
+        self.addCleanup(proxy.shutdown)
+        self.addCleanup(proxy.server_close)
+        base = f"http://127.0.0.1:{proxy.server_port}"
+
+        def turbo_get(path: str) -> int:
+            req = urllib.request.Request(
+                base + path,
+                method="GET",
+                headers={"Authorization": "Bearer " + local_token},
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                return resp.status
+
+        self.assertEqual(turbo_get("/v8/artifacts/demo?slug=ajrly"), 200)
+        # Advance past GRANT_TTL; static token + slug query still refresh.
+        clock["now"] = 1_700_000_000 + 601
+        self.assertEqual(turbo_get("/v8/artifacts/demo?slug=ajrly"), 200)
+        self.assertGreaterEqual(authority.grants_issued, 2)
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            turbo_get("/v8/artifacts/demo?slug=evil")
+        self.assertIn(ctx.exception.code, {403, 502})
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            turbo_get("/v8/artifacts/demo?slug=ajrly&token=x")
+        self.assertIn(ctx.exception.code, {403, 502})
+
+    def test_write_private_json_is_0600_before_content_visible(self):
+        import os
+        import stat
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "state.json"
+            self.mod._write_private_json(path, {"job_token": "secret-token"})
+            mode = stat.S_IMODE(path.stat().st_mode)
+            self.assertEqual(mode, 0o600)
+            self.assertIn("secret-token", path.read_text())
+            # Recreate via open flags must not leave a world-readable gap.
+            path.unlink()
+            fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            os.close(fd)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_node_yml_defaults_and_order(self):
         text = (ROOT / "common" / "node.yml").read_text()
         node = yaml.load(text, Loader=GitLabLoader)
