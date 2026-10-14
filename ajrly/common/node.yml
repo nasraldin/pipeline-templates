@@ -51,15 +51,15 @@
       export AJRLY_DEPENDENCY_CACHE_LAST_REASON=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('reason',''))")
       if [ "$AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit" ]; then
         # prefer-offline alone still resolved remote metadata (pipeline 493 npm WARNs).
-        # Verified store hit → hard offline; miss stays online for authentic cold install.
+        # Verified store hit → hard offline via PNPM_CONFIG_OFFLINE env only.
+        # pnpm 12 rejects writing the offline key into global config.yaml (pipeline 497).
+        # Miss stays online for authentic cold install.
         export PNPM_CONFIG_PREFER_OFFLINE=true
         export PNPM_CONFIG_OFFLINE=true
         pnpm config set prefer-offline true
-        pnpm config set offline true
       else
         unset PNPM_CONFIG_PREFER_OFFLINE PNPM_CONFIG_OFFLINE || true
         pnpm config set prefer-offline false
-        pnpm config set offline false
       fi
     - >-
       test -n "$AJRLY_TEMPLATES_REF" &&

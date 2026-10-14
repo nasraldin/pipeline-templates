@@ -789,7 +789,10 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertIn("PNPM_CONFIG_OFFLINE=true", script)
         self.assertIn('AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit"', script)
         self.assertIn("prefer-offline true", script)
-        self.assertIn("offline true", script)
+        # pnpm 12 rejects writing offline into global config.yaml
+        # (ERR_PNPM_CONFIG_SET_UNSUPPORTED_YAML_CONFIG_KEY on pipeline 497 after
+        # canonical 60b2 hit). Hard offline must be env-only — never a config-set cmd.
+        self.assertNotRegex(script, r"(?m)^\s*pnpm config set offline\b")
         self.assertNotIn("publish_store", script)
         self.assertNotRegex(script, r"(?m)^\s*python3 .*\bpublish\b")
         variables = node["variables"]
