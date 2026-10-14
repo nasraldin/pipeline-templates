@@ -14,7 +14,9 @@ stages:
 
 test:ajrly-cache-contracts:
   stage: validate
-  image: alpine:3.21
+  image:
+    name: alpine:3.21
+    pull_policy: if-not-present
   before_script:
     - apk add --no-cache python3 py3-yaml git nodejs npm ca-certificates
     - npm install --global pnpm@12.10.1 --registry=https://npm.ajrly.com/
@@ -36,50 +38,9 @@ workflow:
 preflight:root-and-examples:
   extends: .preflight_root_and_examples
 
-preflight:template:
+# One job (not a 40-way matrix) to avoid docker.io 429 stampedes on Hub pulls.
+preflight:templates:
   extends: .preflight_template_dry_run
-  parallel:
-    matrix:
-      - PREFLIGHT_ID:
-          - ajrly-monorepo
-          - common-node24
-          - lint-prettier
-          - lint-eslint
-          - lint-yaml
-          - lint-json
-          - lint-markdown
-          - lint-shell
-          - lint-editorconfig
-          - lint-terraform
-          - lint-ansible
-          - node-test
-          - node-build
-          - security-gitleaks
-          - security-osv
-          - security-snyk
-          - security-trivy-fs
-          - quality-sonarqube
-          - container-build-push
-          - container-build
-          - container-harbor-build-push
-          - container-harbor-push
-          - container-trivy-image
-          - container-syft-sbom
-          - container-cosign-sign
-          - container-scan-legacy
-          - gitops-helm-lint
-          - gitops-helm-template
-          - gitops-helm-dry-run
-          - gitops-values-lint
-          - gitops-kubeconform
-          - gitops-argocd-diff
-          - terraform-init
-          - terraform-validate
-          - terraform-plan
-          - terraform-apply
-          - terraform-destroy
-          - ansible-check
-          - ansible-apply
 
 # ---------------------------------------------------------------------------
 # Self-lint (dogfood the lint templates)

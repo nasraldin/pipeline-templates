@@ -1,16 +1,29 @@
-# Hidden job — included by consumer pipelines for matrix dry-runs.
-# The repo root .gitlab-ci.yml wires preflight stage + parallel matrix.
+# Hidden job — included by consumer pipelines for dry-runs.
+# Prefer alpine + apk python3 over docker.io/library/python to avoid Hub
+# rate-limit stampedes when many preflight jobs start together.
+# pull_policy if-not-present reuses a local layer when the runner already has it.
 
 .preflight_template_dry_run:
   stage: preflight
-  image: python:3.13-alpine
+  image:
+    name: alpine:3.21
+    pull_policy: if-not-present
   variables:
     # Runner must hit GitLab on LAN — public URL is behind Cloudflare (1010).
     GITLAB_API_URL: "http://192.168.68.12/api/v4"
     GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
     GITLAB_REF: "${CI_COMMIT_REF_NAME}"
+  before_script:
+    - apk add --no-cache python3
   script:
-    - python3 ci/preflight/validate.py --id "${PREFLIGHT_ID}"
+    # Prefer single-id when PREFLIGHT_ID is set (optional consumer matrix);
+    # otherwise run all templates in one job to avoid Hub pull stampedes.
+    - |
+      if [ -n "${PREFLIGHT_ID:-}" ]; then
+        python3 ci/preflight/validate.py --id "${PREFLIGHT_ID}"
+      else
+        python3 ci/preflight/validate.py --templates-only
+      fi
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -18,11 +31,15 @@
 
 .preflight_root_and_examples:
   stage: preflight
-  image: python:3.13-alpine
+  image:
+    name: alpine:3.21
+    pull_policy: if-not-present
   variables:
     GITLAB_API_URL: "http://192.168.68.12/api/v4"
     GITLAB_PROJECT_ID: "${CI_PROJECT_ID}"
     GITLAB_REF: "${CI_COMMIT_REF_NAME}"
+  before_script:
+    - apk add --no-cache python3
   script:
     - python3 ci/preflight/validate.py --root-only
     - python3 ci/preflight/validate.py --examples-only

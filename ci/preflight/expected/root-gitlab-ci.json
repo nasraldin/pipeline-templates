@@ -20,8 +20,9 @@
     "security:gitleaks",
     ".preflight_template_dry_run",
     ".preflight_root_and_examples",
+    "test:ajrly-cache-contracts",
     "preflight:root-and-examples",
-    "preflight:template"
+    "preflight:templates"
   ],
   "jobs": [
     {
@@ -31,235 +32,7 @@
       "allow_failure": false
     },
     {
-      "name": "preflight:template: [ajrly-monorepo]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [common-node24]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-prettier]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-eslint]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-yaml]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-json]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-markdown]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-shell]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-editorconfig]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-terraform]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [lint-ansible]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [node-test]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [node-build]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [security-gitleaks]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [security-osv]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [security-snyk]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [security-trivy-fs]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [quality-sonarqube]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-build-push]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-build]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-harbor-build-push]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-harbor-push]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-trivy-image]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-syft-sbom]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-cosign-sign]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [container-scan-legacy]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-helm-lint]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-helm-template]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-helm-dry-run]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-values-lint]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-kubeconform]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [gitops-argocd-diff]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [terraform-init]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [terraform-validate]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [terraform-plan]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [terraform-apply]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [terraform-destroy]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [ansible-check]",
-      "stage": "preflight",
-      "when": "on_success",
-      "allow_failure": false
-    },
-    {
-      "name": "preflight:template: [ansible-apply]",
+      "name": "preflight:templates",
       "stage": "preflight",
       "when": "on_success",
       "allow_failure": false
@@ -296,6 +69,12 @@
     },
     {
       "name": "security:gitleaks",
+      "stage": "validate",
+      "when": "on_success",
+      "allow_failure": false
+    },
+    {
+      "name": "test:ajrly-cache-contracts",
       "stage": "validate",
       "when": "on_success",
       "allow_failure": false
