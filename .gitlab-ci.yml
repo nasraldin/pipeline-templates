@@ -14,9 +14,7 @@ stages:
 
 test:ajrly-cache-contracts:
   stage: validate
-  image:
-    name: alpine:3.21
-    pull_policy: if-not-present
+  image: alpine:3.21
   before_script:
     - apk add --no-cache python3 py3-yaml git nodejs npm ca-certificates
     - npm install --global pnpm@12.10.1 --registry=https://npm.ajrly.com/

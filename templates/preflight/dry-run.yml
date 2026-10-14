@@ -1,13 +1,12 @@
 # Hidden job — included by consumer pipelines for dry-runs.
 # Prefer alpine + apk python3 over docker.io/library/python to avoid Hub
 # rate-limit stampedes when many preflight jobs start together.
-# pull_policy if-not-present reuses a local layer when the runner already has it.
+# Note: runner-01-docker allowed_pull_policies is [always] only — do not set
+# job pull_policy if-not-present (runner_configuration_error).
 
 .preflight_template_dry_run:
   stage: preflight
-  image:
-    name: alpine:3.21
-    pull_policy: if-not-present
+  image: alpine:3.21
   variables:
     # Runner must hit GitLab on LAN — public URL is behind Cloudflare (1010).
     GITLAB_API_URL: "http://192.168.68.12/api/v4"
