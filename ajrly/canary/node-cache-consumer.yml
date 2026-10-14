@@ -114,6 +114,10 @@ variables:
     # Server metadata authority: reject branch drift / caller-written trust.
     - python3 /tmp/ajrly-dependency-cache.py require-immutable-ref --ref "$AJRLY_TEMPLATES_REF"
     - |
+      # Prefer the same internal HTTP API host used for script curl fetch.
+      # Cluster CI_API_V4_URL is often https://gitlab.nasraldin.com and unreachable
+      # from runner pods (errno 101).
+      export CI_API_V4_URL="${AJRLY_GITLAB_API_V4_URL:-http://192.168.68.12/api/v4}"
       META=$(python3 /tmp/ajrly-dependency-cache.py file-metadata --ref "$AJRLY_TEMPLATES_REF" --script dependency_cache.py)
       echo "$META" | tee /tmp/ajrly-dependency-cache.meta.json
       LOCAL_SHA=$(sha256sum /tmp/ajrly-dependency-cache.py | awk '{print $1}')
