@@ -1120,6 +1120,9 @@ class MetadataFullContractTests(unittest.TestCase):
         meta = self.root / ".pnpm-cache" / "v12" / "metadata-full" / "https%3A+npm.ajrly.com"
         meta.mkdir(parents=True)
         (meta / "is-number.json").write_bytes(b'{"name":"is-number"}\n')
+        abbrev = self.root / ".pnpm-cache" / "v12" / "metadata" / "https%3A+npm.ajrly.com"
+        abbrev.mkdir(parents=True)
+        (abbrev / "is-number.json").write_bytes(b'{"name":"is-number"}\n')
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -1138,7 +1141,10 @@ class MetadataFullContractTests(unittest.TestCase):
             cache_dir=self.root / ".pnpm-cache",
         )
         self.assertEqual(manifest["schema"], 2)
-        self.assertEqual(manifest["metadata_paths"], ["v12/metadata-full"])
+        self.assertEqual(
+            sorted(manifest["metadata_paths"]),
+            ["v12/metadata", "v12/metadata-full"],
+        )
         self.assertIn(self.mod.metadata_archive_object_key(key), writer.objects)
         self.assertNotIn(b"nope", writer.objects[self.mod.metadata_archive_object_key(key)])
         self.assertNotIn(b"junk", writer.objects[self.mod.metadata_archive_object_key(key)])

@@ -35,7 +35,8 @@ MAX_COMBINED_COMPRESSED_BYTES = 2 * MAX_COMPRESSED_BYTES
 MAX_AGE_SECONDS = 7 * 24 * 3600
 STORE_DIRNAME = ".pnpm-store"
 PROJECT_CACHE_DIRNAME = ".pnpm-cache"
-METADATA_ALLOWLIST_NAME = "metadata-full"
+# Abbreviated ``metadata`` (pnpm fetch) + optional ``metadata-full``; never node_modules/dlx.
+METADATA_ALLOWLIST_NAMES = frozenset({"metadata", "metadata-full"})
 METADATA_VERSION_RE = re.compile(r"^v\d+$")
 DEFAULT_PREFIX = "canonical/"
 SOURCE_MANIFEST = ".ajrly-source.json"
@@ -415,7 +416,7 @@ def _metadata_root_allowed(relative: str) -> bool:
     return (
         len(parts) == 2
         and bool(METADATA_VERSION_RE.fullmatch(parts[0]))
-        and parts[1] == METADATA_ALLOWLIST_NAME
+        and parts[1] in METADATA_ALLOWLIST_NAMES
     )
 
 
@@ -423,7 +424,11 @@ def _metadata_member_allowed(relative: str) -> bool:
     parts = Path(relative).parts
     if len(parts) < 2:
         return False
-    return bool(METADATA_VERSION_RE.fullmatch(parts[0]) and parts[1] == METADATA_ALLOWLIST_NAME)
+    if "dlx" in parts or "node_modules" in parts:
+        return False
+    return bool(
+        METADATA_VERSION_RE.fullmatch(parts[0]) and parts[1] in METADATA_ALLOWLIST_NAMES
+    )
 
 
 def resolve_pnpm_cache_dir(
@@ -465,9 +470,10 @@ def iter_metadata_full_roots(cache_dir: Path) -> list[Path]:
         return roots
     for child in sorted(cache_dir.iterdir()):
         if child.is_dir() and METADATA_VERSION_RE.fullmatch(child.name):
-            meta = child / METADATA_ALLOWLIST_NAME
-            if meta.is_dir():
-                roots.append(meta)
+            for name in sorted(METADATA_ALLOWLIST_NAMES):
+                meta = child / name
+                if meta.is_dir():
+                    roots.append(meta)
     return roots
 
 
@@ -1174,7 +1180,7 @@ def _archive_store(store: Path, archive_path: Path) -> Tuple[int, int]:
 def _archive_metadata(cache_dir: Path, archive_path: Path) -> Tuple[int, int, list]:
     roots = iter_metadata_full_roots(cache_dir)
     if not roots:
-        raise ValueError("pnpm metadata-full is missing")
+        raise ValueError("pnpm metadata cache mirrors missing")
     expanded = 0
     members: list[Path] = []
     for meta_root in roots:
@@ -1187,7 +1193,7 @@ def _archive_metadata(cache_dir: Path, archive_path: Path) -> Tuple[int, int, li
                     raise ValueError("metadata path not allowlisted")
                 members.append(path)
     if not members:
-        raise ValueError("pnpm metadata-full is empty")
+        raise ValueError("pnpm metadata cache mirrors empty")
     with tarfile.open(archive_path, mode="w:gz", compresslevel=6) as tar:
         for path in sorted(members):
             relative = path.relative_to(cache_dir).as_posix()
