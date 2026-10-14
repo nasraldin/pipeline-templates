@@ -130,15 +130,21 @@ variables:
         export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
         pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
         # Capture restore metrics; never claim a Runner cache hit as a store hit.
+        # Scope from job definition only (--scope-from-job); never hardcode --scope full
+        # for LAST_KEY after a scoped restore (fabricates full-scope identity).
         RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
-          --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}" --json --phase "${NODE_CACHE_PHASE:-restore}" \
+          --scope-from-job --json --phase "${NODE_CACHE_PHASE:-restore}" \
           --configured-registry "${AJRLY_NPM_REGISTRY}")
         echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
         export AJRLY_DEPENDENCY_CACHE_LAST_STATUS=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json'))['status'])")
         export AJRLY_DEPENDENCY_CACHE_LAST_REASON=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('reason',''))")
         export AJRLY_DEPENDENCY_CACHE_LAST_BYTES=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('bytes',0))")
         export AJRLY_DEPENDENCY_CACHE_LAST_DURATION=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('restore_duration_s',0))")
-        export AJRLY_DEPENDENCY_CACHE_LAST_KEY=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)
+        # Job-scope key identity (may differ from archive key when full archive is reused).
+        export AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope-from-job)
+        export AJRLY_DEPENDENCY_CACHE_LAST_KEY="$AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY"
+        export AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('job_scope',''))")
+        export AJRLY_DEPENDENCY_CACHE_LAST_ARCHIVE_SCOPE=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('archive_scope',''))")
       fi
 
 .node_cache_consumer_install:

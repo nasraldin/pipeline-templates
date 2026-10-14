@@ -192,11 +192,48 @@ def _patches_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+def _validate_scope(scope: str) -> str:
+    cleaned = (scope or "").strip()
+    if not cleaned or cleaned.startswith("-") or ".." in cleaned or cleaned.startswith("/"):
+        raise ValueError("invalid dependency scope")
+    return cleaned
+
+
+def resolve_job_install_scope(env: Mapping[str, str]) -> str:
+    """Derive install/cache scope from authoritative job definition vars only.
+
+    Reads ``PNPM_INSTALL_SCOPE`` / ``PROJECT_PATH`` (matrix/job definition).
+    Does **not** let ``AJRLY_DEPENDENCY_CACHE_SCOPE`` (or write flags) widen a
+    scoped job to ``full`` — that would fabricate a full-scope key identity.
+    Cache-scope is used only when no install-scope job vars are set (full canaries).
+    """
+    pnpm_scope = (env.get("PNPM_INSTALL_SCOPE") or "").strip()
+    if pnpm_scope in {"full", "packages"}:
+        return pnpm_scope
+    project_path = (env.get("PROJECT_PATH") or "").strip()
+    if project_path:
+        return _validate_scope(project_path)
+    cache_scope = (env.get("AJRLY_DEPENDENCY_CACHE_SCOPE") or "").strip()
+    if cache_scope:
+        return _validate_scope(cache_scope)
+    return "full"
+
+
+@dataclass(frozen=True)
+class JobScopeRestore:
+    """Restore outcome with distinct job vs archive scope identities."""
+
+    result: RestoreResult
+    job_scope: str
+    archive_scope: str
+    job_key: str
+    archive_key: str
+
+
 def dependency_key(root: Path, scope: str, toolchain: Mapping[str, str]) -> str:
     """Hash schema/platform/libc/Node/pnpm plus lockfile/workspace/patch inputs."""
     root = Path(root)
-    if not scope or scope.startswith("-") or ".." in scope or scope.startswith("/"):
-        raise ValueError("invalid dependency scope")
+    scope = _validate_scope(scope)
     node = str(toolchain.get("node", "")).strip()
     pnpm = str(toolchain.get("pnpm", "")).strip()
     if not node or not pnpm:
@@ -321,6 +358,9 @@ def format_restore_report(
     store_bytes: Optional[int] = None,
     npm_request_estimate: Optional[int] = None,
     pnpm_progress: Optional[Mapping[str, int]] = None,
+    job_scope: str = "",
+    archive_scope: str = "",
+    job_key: str = "",
 ) -> dict:
     """Machine-readable restore metrics for canary cold/warm/sources-only phases.
 
@@ -353,6 +393,12 @@ def format_restore_report(
         ),
         "local_store_warm": bool(local_store_warm),
     }
+    if job_scope:
+        report["job_scope"] = job_scope
+    if archive_scope:
+        report["archive_scope"] = archive_scope
+    if job_key:
+        report["job_key_prefix"] = (job_key[:18] + "…")
     if observed:
         report["npm_only"] = all(_is_private_npm_host(host) for host in observed)
     if install_elapsed_s is not None:
@@ -673,6 +719,85 @@ def restore_store(
         return RestoreResult("rejected", 0, time.monotonic() - started, reason or "error")
 
 
+def restore_for_job_scope(
+    root: Path,
+    reader: S3Reader,
+    *,
+    env: Mapping[str, str],
+    toolchain: Mapping[str, str],
+    prefix: str = DEFAULT_PREFIX,
+    staging_dir: Optional[Path] = None,
+    now: Optional[float] = None,
+) -> JobScopeRestore:
+    """Restore using job-definition scope; reuse canonical full archive without fabricating keys.
+
+    Job scope/key stay distinct from archive scope/key when a scoped miss falls back
+    to the published full store. Never rewrites the job key to the full-scope digest.
+    """
+    job_scope = resolve_job_install_scope(env)
+    job_key = dependency_key(root, job_scope, toolchain)
+    primary = restore_store(
+        root,
+        job_key,
+        reader,
+        scope=job_scope,
+        toolchain=toolchain,
+        prefix=prefix,
+        staging_dir=staging_dir,
+        now=now,
+    )
+    if primary.status == "hit":
+        return JobScopeRestore(
+            result=primary,
+            job_scope=job_scope,
+            archive_scope=job_scope,
+            job_key=job_key,
+            archive_key=job_key,
+        )
+    if job_scope == "full" or primary.reason not in {"not_found", ""}:
+        return JobScopeRestore(
+            result=primary,
+            job_scope=job_scope,
+            archive_scope=job_scope,
+            job_key=job_key,
+            archive_key=job_key,
+        )
+
+    full_key = dependency_key(root, "full", toolchain)
+    fallback = restore_store(
+        root,
+        full_key,
+        reader,
+        scope="full",
+        toolchain=toolchain,
+        prefix=prefix,
+        staging_dir=staging_dir,
+        now=now,
+    )
+    if fallback.status == "hit":
+        reused = RestoreResult(
+            "hit",
+            fallback.bytes,
+            fallback.duration,
+            "reused_full_archive",
+        )
+        return JobScopeRestore(
+            result=reused,
+            job_scope=job_scope,
+            archive_scope="full",
+            job_key=job_key,
+            archive_key=full_key,
+        )
+    # Prefer reporting the scoped miss identity when full also misses.
+    return JobScopeRestore(
+        result=primary,
+        job_scope=job_scope,
+        archive_scope=job_scope,
+        job_key=job_key,
+        archive_key=job_key,
+    )
+
+
 def _iter_store_files(store: Path) -> Iterable[Path]:
     for path in sorted(store.rglob("*")):
         if path.is_symlink() or path.is_file():
@@ -916,6 +1041,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     )
     parser.add_argument("--root", default=".")
     parser.add_argument("--scope", default="full")
+    parser.add_argument(
+        "--scope-from-job",
+        action="store_true",
+        default=False,
+        help=(
+            "Resolve scope from job install vars (PROJECT_PATH/PNPM_INSTALL_SCOPE); "
+            "do not let AJRLY_DEPENDENCY_CACHE_SCOPE widen a scoped job"
+        ),
+    )
     parser.add_argument("--key", default="")
     parser.add_argument("--ref", default="")
     parser.add_argument("--script", default="dependency_cache.py")
@@ -987,8 +1121,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return 0
 
     toolchain = toolchain_from_env()
+    scope = (
+        resolve_job_install_scope(os.environ)
+        if args.scope_from_job
+        else args.scope
+    )
+
     if args.command == "key":
-        print(dependency_key(root, args.scope, toolchain))
+        print(dependency_key(root, scope, toolchain))
         return 0
 
     if args.command == "report":
@@ -1021,6 +1161,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             store_bytes=args.store_bytes,
             npm_request_estimate=args.npm_request_estimate,
             pnpm_progress=_progress_from_args(),
+            job_scope=os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_JOB_SCOPE", ""),
+            archive_scope=os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_ARCHIVE_SCOPE", ""),
+            job_key=os.environ.get("AJRLY_DEPENDENCY_CACHE_LAST_JOB_KEY", ""),
         ), sort_keys=True))
         return 0
 
@@ -1040,22 +1183,53 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 store_bytes=args.store_bytes,
                 npm_request_estimate=args.npm_request_estimate,
                 pnpm_progress=_progress_from_args(),
+                job_scope=scope if args.scope_from_job else "",
+                archive_scope=scope if args.scope_from_job else "",
             ), sort_keys=True))
         else:
             print(format_restore_summary(result))
         return 0
-    computed = dependency_key(root, args.scope, toolchain)
-    supplied = args.key.strip()
-    key = supplied or computed
+
     prefix = os.environ.get("AJRLY_DEPENDENCY_CACHE_PREFIX", DEFAULT_PREFIX)
     reader = reader_from_env()
+    configured = args.configured_registry.strip() or (
+        os.environ.get("AJRLY_NPM_REGISTRY") or os.environ.get("PNPM_CONFIG_REGISTRY") or ""
+    ).strip()
+
+    if args.scope_from_job:
+        outcome = restore_for_job_scope(
+            root, reader, env=os.environ, toolchain=toolchain, prefix=prefix,
+        )
+        result = outcome.result
+        key = outcome.archive_key
+        if args.as_json:
+            print(json.dumps(format_restore_report(
+                result,
+                key=key,
+                phase=args.phase or "restore",
+                install_elapsed_s=args.install_elapsed,
+                upstream_hosts=args.upstream_host,
+                configured_registry=configured,
+                observed_registry_hosts=args.observed_registry_host,
+                local_store_warm=args.local_store_warm,
+                store_bytes=args.store_bytes,
+                npm_request_estimate=args.npm_request_estimate,
+                pnpm_progress=_progress_from_args(),
+                job_scope=outcome.job_scope,
+                archive_scope=outcome.archive_scope,
+                job_key=outcome.job_key,
+            ), sort_keys=True))
+        else:
+            print(format_restore_summary(result, key=key))
+        return 0
+
+    computed = dependency_key(root, scope, toolchain)
+    supplied = args.key.strip()
+    key = supplied or computed
     result = restore_store(
-        root, key, reader, scope=args.scope, toolchain=toolchain, prefix=prefix,
+        root, key, reader, scope=scope, toolchain=toolchain, prefix=prefix,
     )
     if args.as_json:
-        configured = args.configured_registry.strip() or (
-            os.environ.get("AJRLY_NPM_REGISTRY") or os.environ.get("PNPM_CONFIG_REGISTRY") or ""
-        ).strip()
         print(json.dumps(format_restore_report(
             result,
             key=key,

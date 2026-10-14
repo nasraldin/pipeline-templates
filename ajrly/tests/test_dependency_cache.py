@@ -741,6 +741,137 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(node_vars.get("AJRLY_NPM_REGISTRY", ""), "")
         self.assertNotIn("AJRLY_CI_TOOL_IMAGE_DIGEST", node_vars)
 
+class JobInstallScopeTests(unittest.TestCase):
+    """Job-definition install scope is authoritative; no fabricated full-scope keys."""
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("dependency_cache", SCRIPT)
+        cls.mod = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(cls.mod)
+
+    def test_resolve_job_install_scope_reads_project_path_over_cache_scope_flag(self):
+        # Caller/write flag AJRLY_DEPENDENCY_CACHE_SCOPE=full must not widen a scoped job.
+        scope = self.mod.resolve_job_install_scope({
+            "PROJECT_PATH": "apps/backend/api",
+            "AJRLY_DEPENDENCY_CACHE_SCOPE": "full",
+            "AJRLY_DEPENDENCY_CACHE_WRITE": "true",  # ignored noise
+        })
+        self.assertEqual(scope, "apps/backend/api")
+
+    def test_resolve_job_install_scope_packages_and_full(self):
+        self.assertEqual(
+            self.mod.resolve_job_install_scope({"PNPM_INSTALL_SCOPE": "packages"}),
+            "packages",
+        )
+        self.assertEqual(
+            self.mod.resolve_job_install_scope({"PNPM_INSTALL_SCOPE": "full"}),
+            "full",
+        )
+
+    def test_resolve_job_install_scope_cache_scope_only_when_no_install_vars(self):
+        self.assertEqual(
+            self.mod.resolve_job_install_scope({"AJRLY_DEPENDENCY_CACHE_SCOPE": "full"}),
+            "full",
+        )
+        self.assertEqual(self.mod.resolve_job_install_scope({}), "full")
+
+    def test_resolve_job_install_scope_rejects_traversal(self):
+        with self.assertRaises(ValueError):
+            self.mod.resolve_job_install_scope({"PROJECT_PATH": "../etc"})
+
+    def test_restore_reuses_full_archive_without_fabricating_job_scope_key(self):
+        """Scoped job may restore the canonical full archive; report must keep scopes distinct."""
+        root = pathlib.Path(tempfile.mkdtemp(prefix="scope-restore-"))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        (root / ".ajrly-source.json").write_text(
+            json.dumps({"sha": "a" * 40}) + "\n", encoding="utf-8"
+        )
+        (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        (root / "pnpm-workspace.yaml").write_text("packages: []\n", encoding="utf-8")
+        store = root / ".pnpm-store"
+        store.mkdir()
+        (store / "v3").mkdir()
+        (store / "v3" / "files").write_bytes(b"canonical-store")
+
+        toolchain = {"node": "26.11.1", "pnpm": "12.10.1"}
+        full_key = self.mod.dependency_key(root, "full", toolchain)
+        job_scope = "apps/backend/api"
+        job_key = self.mod.dependency_key(root, job_scope, toolchain)
+        self.assertNotEqual(full_key, job_key)
+
+        writer = MemoryS3()
+        # Publish only the full archive (no scoped archive exists).
+        self.mod.publish_store(
+            root, full_key, writer, scope="full", toolchain=toolchain
+        )
+        # Clear local store so restore must fetch.
+        shutil.rmtree(store)
+
+        outcome = self.mod.restore_for_job_scope(
+            root,
+            writer,
+            env={
+                "PROJECT_PATH": job_scope,
+                "AJRLY_DEPENDENCY_CACHE_SCOPE": "full",  # must not fabricate job key=full
+            },
+            toolchain=toolchain,
+        )
+        self.assertEqual(outcome.result.status, "hit")
+        self.assertEqual(outcome.job_scope, job_scope)
+        self.assertEqual(outcome.archive_scope, "full")
+        self.assertEqual(outcome.archive_key, full_key)
+        self.assertEqual(outcome.job_key, job_key)
+        self.assertNotEqual(outcome.job_key, outcome.archive_key)
+        self.assertEqual(outcome.result.reason, "reused_full_archive")
+        self.assertTrue((root / ".pnpm-store" / "v3" / "files").is_file())
+
+        report = self.mod.format_restore_report(
+            outcome.result,
+            key=outcome.archive_key,
+            job_scope=outcome.job_scope,
+            archive_scope=outcome.archive_scope,
+            job_key=outcome.job_key,
+        )
+        self.assertEqual(report["job_scope"], job_scope)
+        self.assertEqual(report["archive_scope"], "full")
+        self.assertEqual(report["job_key_prefix"], job_key[:18] + "…")
+        # Must not claim the job key equals the full archive key.
+        self.assertNotEqual(report.get("job_key_prefix"), report.get("key_prefix"))
+
+    def test_node_restore_uses_scope_from_job_not_caller_cache_scope_flag(self):
+        text = NODE_YML.read_text()
+        self.assertIn("--scope-from-job", text)
+        # Must not prefer a caller-writable cache-scope default over job install vars.
+        self.assertNotIn(
+            '--scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}"',
+            text,
+        )
+
+    def test_canary_last_key_uses_resolved_job_scope_not_hardcoded_full(self):
+        text = CANARY_YML.read_text()
+        # Hardcoding --scope full for LAST_KEY after restore fabricates identity.
+        self.assertNotIn(
+            'AJRLY_DEPENDENCY_CACHE_LAST_KEY=$(python3 /tmp/ajrly-dependency-cache.py key --root "$CI_PROJECT_DIR" --scope full)',
+            text,
+        )
+        self.assertIn("--scope-from-job", text)
+
+    def test_scoped_install_canary_include_exists_and_is_not_default_pipeline(self):
+        canary = ROOT / "canary" / "node-scoped-install.yml"
+        self.assertTrue(canary.is_file(), "dedicated scoped-install canary missing")
+        text = canary.read_text()
+        self.assertIn("PROJECT_PATH", text)
+        self.assertIn("apps/backend/api", text)
+        self.assertIn("pnpm-install-scoped", text)
+        self.assertIn(VERIFIED_NODE_DIGEST, text)
+        self.assertIn("--scope-from-job", text)
+        pipeline = PIPELINE_YML.read_text()
+        self.assertNotIn("node-scoped-install.yml", pipeline)
+
+
+
 
 if __name__ == "__main__":
     unittest.main()

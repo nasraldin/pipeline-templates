@@ -49,7 +49,9 @@
     - |
       # Exact-source verification completed above (GIT_STRATEGY=none). Key/restore only
       # after checkout. No GitLab archive key-files. Ordinary jobs never upload canonical archives.
-      python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" --scope "${AJRLY_DEPENDENCY_CACHE_SCOPE:-full}"
+      # Scope is job-definition authoritative (PROJECT_PATH/PNPM_INSTALL_SCOPE via --scope-from-job),
+      # not a caller-writable AJRLY_DEPENDENCY_CACHE_SCOPE widen to full.
+      python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" --scope-from-job
     - >-
       test -n "$AJRLY_TEMPLATES_REF" &&
       curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN"
