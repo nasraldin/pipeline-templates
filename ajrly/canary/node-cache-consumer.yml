@@ -44,7 +44,8 @@ variables:
   stage: node_cache_canary
   image:
     name: $AJRLY_CI_TOOLS_NODE_IMAGE
-    pull_policy: always
+    # Runner allowed_pull_policies is IfNotPresent only; digest pin is immutable.
+    pull_policy: if-not-present
   tags: [ajrly-kubernetes]
   interruptible: true
   timeout: 45m

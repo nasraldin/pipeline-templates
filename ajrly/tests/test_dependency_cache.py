@@ -568,6 +568,8 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertEqual(base["variables"]["GIT_STRATEGY"], "none")
         self.assertEqual(base["variables"]["AJRLY_DEPENDENCY_CACHE_ENABLED"], "true")
         self.assertEqual(base["variables"]["AJRLY_NPM_REGISTRY"], "https://npm.ajrly.com/")
+        # Runner config allows IfNotPresent only (Always was rejected on pipeline 459).
+        self.assertEqual(base["image"]["pull_policy"], "if-not-present")
         self.assertNotIn("cache", base)
         self.assertNotRegex(text, r"(?m)^\s*cache:\s*$")
         self.assertNotRegex(text, r"(?m)^\s*paths:\s*\n\s*-\s*node_modules")
