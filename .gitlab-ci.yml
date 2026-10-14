@@ -12,6 +12,15 @@ stages:
   - lint
   - validate
 
+test:ajrly-cache-contracts:
+  stage: validate
+  image: alpine:3.21
+  before_script:
+    - apk add --no-cache python3 py3-yaml git nodejs npm ca-certificates
+    - npm install --global pnpm@12.10.1 --registry=https://npm.ajrly.com/
+  script:
+    - python3 -m unittest discover -s ajrly/tests -v
+
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
