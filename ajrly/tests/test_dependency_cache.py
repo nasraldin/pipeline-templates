@@ -111,10 +111,27 @@ class DependencyCacheTests(unittest.TestCase):
                 tar.addfile(info, io.BytesIO(data))
         return buf.getvalue()
 
+    def _seed_metadata(self, files: Optional[Dict[str, bytes]] = None) -> pathlib.Path:
+        cache = self.root / ".pnpm-cache"
+        if cache.exists():
+            shutil.rmtree(cache)
+        meta = cache / "v12" / "metadata-full" / "https%3A+npm.ajrly.com"
+        meta.mkdir(parents=True)
+        payload = files or {"is-number.json": b'{"name":"is-number"}\n'}
+        for name, data in payload.items():
+            path = meta / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        return cache
+
     def _manifest(self, key: str, archive: bytes, *, expanded: int, created_at: Optional[float] = None,
-                  scope: str = "full", corrupt_sha: bool = False) -> dict:
+                  scope: str = "full", corrupt_sha: bool = False,
+                  metadata_archive: bytes = b"", metadata_expanded: int = 0) -> dict:
+        if not metadata_archive:
+            metadata_archive = self._store_bytes({"v12/metadata-full/pkg.json": b"{}"})
+            metadata_expanded = 2
         return {
-            "schema": 1,
+            "schema": 2,
             "key": key,
             "toolchain": dict(self.toolchain),
             "scope": scope,
@@ -122,6 +139,11 @@ class DependencyCacheTests(unittest.TestCase):
             "archive_sha256": ("0" * 64) if corrupt_sha else hashlib.sha256(archive).hexdigest(),
             "compressed_bytes": len(archive),
             "expanded_bytes": expanded,
+            "metadata_archive_sha256": hashlib.sha256(metadata_archive).hexdigest(),
+            "metadata_compressed_bytes": len(metadata_archive),
+            "metadata_expanded_bytes": metadata_expanded,
+            "metadata_paths": ["v12/metadata-full"],
+            "cache_dir_name": ".pnpm-cache",
         }
 
     def _publish_local(self, files: Dict[str, bytes], *, scope: str = "full") -> tuple[str, MemoryS3]:
@@ -133,9 +155,12 @@ class DependencyCacheTests(unittest.TestCase):
             path = store / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
+        cache = self._seed_metadata()
         key = self._key(scope)
         writer = MemoryS3()
-        result = self.mod.publish_store(self.root, key, writer, scope=scope, toolchain=self.toolchain)
+        result = self.mod.publish_store(
+            self.root, key, writer, scope=scope, toolchain=self.toolchain, cache_dir=cache,
+        )
         self.assertEqual(result["key"], key)
         return key, writer
 
@@ -173,8 +198,8 @@ class DependencyCacheTests(unittest.TestCase):
 
         scope_key = self.mod.dependency_key(self.root, "apps/web/admin", self.toolchain)
         self.assertNotEqual(base, scope_key)
-        self.assertTrue(base.startswith("dep-v1-"))
-        self.assertRegex(base, r"^dep-v1-[0-9a-f]{64}$")
+        self.assertTrue(base.startswith("dep-v2-"))
+        self.assertRegex(base, r"^dep-v2-[0-9a-f]{64}$")
 
     def test_restore_report_separates_configured_vs_observed_registry(self):
         """Caller --upstream-host / pnpm config is configured_registry, not traffic proof."""
@@ -182,7 +207,7 @@ class DependencyCacheTests(unittest.TestCase):
         # Config-only path: no observed hosts → must not claim npm_only / observed traffic.
         report = self.mod.format_restore_report(
             result,
-            key="dep-v1-" + ("a" * 64),
+            key="dep-v2-" + ("a" * 64),
             phase="warm",
             install_elapsed_s=3.5,
             configured_registry="https://npm.ajrly.com/",
@@ -477,7 +502,7 @@ class DependencyCacheTests(unittest.TestCase):
     def test_caller_selected_key_is_rejected_and_staging_removed(self):
         key, reader = self._publish_local({"index/v1": b"pkg\n"})
         shutil.rmtree(self.root / ".pnpm-store")
-        forged = "dep-v1-" + ("f" * 64)
+        forged = "dep-v2-" + ("f" * 64)
         staging_parent = self.root / ".ci-tmp" / "dependency-cache"
         staging_parent.mkdir(parents=True)
         result = self.mod.restore_store(
@@ -659,7 +684,8 @@ class DependencyCacheTests(unittest.TestCase):
         })
         result = self.mod.restore_store(self.root, key, reader, scope="full", toolchain=self.toolchain)
         self.assertEqual(result.status, "rejected")
-        self.assertEqual(result.reason, "compressed_too_large")
+        # Schema-2 manifest validation fail-closes oversized claims before fetch.
+        self.assertIn(result.reason, {"compressed_too_large", "corrupt_manifest"})
 
     def test_reject_expanded_over_free_disk_budget(self):
         key = self._key()
@@ -684,6 +710,7 @@ class DependencyCacheTests(unittest.TestCase):
         store = self.root / ".pnpm-store"
         store.mkdir()
         (store / "x").write_bytes(b"payload")
+        cache = self._seed_metadata()
         key = self._key()
         writer = MemoryS3()
         # Caller trust/env flags must not be consulted as authorization.
@@ -692,14 +719,14 @@ class DependencyCacheTests(unittest.TestCase):
             if hasattr(self.mod, "authorize_writer"):
                 with mock.patch.object(self.mod, "authorize_writer") as auth:
                     result = self.mod.publish_store(
-                        self.root, key, writer, scope="full", toolchain=self.toolchain
+                        self.root, key, writer, scope="full", toolchain=self.toolchain, cache_dir=cache,
                     )
                     auth.assert_not_called()
             else:
                 result = self.mod.publish_store(
-                    self.root, key, writer, scope="full", toolchain=self.toolchain
+                    self.root, key, writer, scope="full", toolchain=self.toolchain, cache_dir=cache,
                 )
-        self.assertEqual(result["schema"], 1)
+        self.assertEqual(result["schema"], 2)
         self.assertEqual(result["key"], key)
         self.assertIn("archive_sha256", result)
         self.assertLessEqual(result["compressed_bytes"], self.mod.MAX_COMPRESSED_BYTES)
@@ -714,9 +741,12 @@ class DependencyCacheTests(unittest.TestCase):
         store = self.root / ".pnpm-store"
         store.mkdir()
         (store / "big").write_bytes(b"x" * 1024)
+        cache = self._seed_metadata()
         with mock.patch.object(self.mod, "MAX_COMPRESSED_BYTES", 10):
             with self.assertRaises(ValueError) as raised:
-                self.mod.publish_store(self.root, key, writer, scope="full", toolchain=self.toolchain)
+                self.mod.publish_store(
+                    self.root, key, writer, scope="full", toolchain=self.toolchain, cache_dir=cache,
+                )
         self.assertIn("compressed", str(raised.exception).lower())
 
     def test_summaries_omit_secrets_and_urls_with_credentials(self):
@@ -788,10 +818,10 @@ class DependencyCacheTests(unittest.TestCase):
         self.assertIn("PNPM_CONFIG_PREFER_OFFLINE=true", script)
         self.assertIn('AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit"', script)
         self.assertIn("prefer-offline true", script)
-        # Canonical store archive restores content-addressable packages but not
-        # pnpm's global metadata-full mirror. Hard OFFLINE=true → NO_OFFLINE_META
-        # (pipeline 501). Hit path stays prefer-offline against private npm only.
-        self.assertNotIn("PNPM_CONFIG_OFFLINE=true", script)
+        self.assertIn("cache-dir", script)
+        self.assertIn("AJRLY_DEPENDENCY_CACHE_METADATA_STATUS", script)
+        # Schema-2 store+metadata hit enables env offline; never `pnpm config set offline`.
+        self.assertIn("PNPM_CONFIG_OFFLINE=true", script)
         self.assertNotRegex(script, r"(?m)^\s*pnpm config set offline\b")
         self.assertNotIn("publish_store", script)
         self.assertNotRegex(script, r"(?m)^\s*python3 .*\bpublish\b")
@@ -954,6 +984,9 @@ class JobInstallScopeTests(unittest.TestCase):
         store.mkdir()
         (store / "v3").mkdir()
         (store / "v3" / "files").write_bytes(b"canonical-store")
+        cache = root / ".pnpm-cache" / "v12" / "metadata-full" / "reg"
+        cache.mkdir(parents=True)
+        (cache / "pkg.json").write_bytes(b"{}")
 
         toolchain = {"node": "26.11.1", "pnpm": "12.10.1"}
         full_key = self.mod.dependency_key(root, "full", toolchain)
@@ -964,7 +997,8 @@ class JobInstallScopeTests(unittest.TestCase):
         writer = MemoryS3()
         # Publish only the full archive (no scoped archive exists).
         self.mod.publish_store(
-            root, full_key, writer, scope="full", toolchain=toolchain
+            root, full_key, writer, scope="full", toolchain=toolchain,
+            cache_dir=root / ".pnpm-cache",
         )
         # Clear local store so restore must fetch.
         shutil.rmtree(store)
@@ -1061,6 +1095,145 @@ class JobInstallScopeTests(unittest.TestCase):
         node_text = NODE_YML.read_text()
         self.assertNotRegex(node_text, r"(?m)^\s*[^#]*\bfile-metadata\b")
 
+
+
+
+class MetadataFullContractTests(unittest.TestCase):
+    """Schema-2 metadata-full archive: allowlist, traversal, fallback cold-safe."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("ajrly_dependency_cache_meta", SCRIPT)
+        self.mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = self.mod
+        spec.loader.exec_module(self.mod)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+        self.toolchain = {"node": "26.11.1", "pnpm": "12.10.1"}
+        (self.root / "pnpm-lock.yaml").write_text("lock-v1\n")
+        (self.root / "pnpm-workspace.yaml").write_text("packages: []\n")
+        (self.root / ".ajrly-source.json").write_text(
+            json.dumps({"sha": "a" * 40}) + "\n"
+        )
+        store = self.root / ".pnpm-store" / "files"
+        store.mkdir(parents=True)
+        (store / "pkg").write_bytes(b"store")
+        meta = self.root / ".pnpm-cache" / "v12" / "metadata-full" / "https%3A+npm.ajrly.com"
+        meta.mkdir(parents=True)
+        (meta / "is-number.json").write_bytes(b'{"name":"is-number"}\n')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_publish_includes_metadata_archive_not_node_modules(self):
+        (self.root / "node_modules" / "evil").mkdir(parents=True)
+        (self.root / "node_modules" / "evil" / "x").write_bytes(b"nope")
+        # Non-allowlisted cache noise must be ignored.
+        dlx = self.root / ".pnpm-cache" / "dlx" / "x"
+        dlx.mkdir(parents=True)
+        (dlx / "junk").write_bytes(b"junk")
+        key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        writer = MemoryS3()
+        manifest = self.mod.publish_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+            cache_dir=self.root / ".pnpm-cache",
+        )
+        self.assertEqual(manifest["schema"], 2)
+        self.assertEqual(manifest["metadata_paths"], ["v12/metadata-full"])
+        self.assertIn(self.mod.metadata_archive_object_key(key), writer.objects)
+        self.assertNotIn(b"nope", writer.objects[self.mod.metadata_archive_object_key(key)])
+        self.assertNotIn(b"junk", writer.objects[self.mod.metadata_archive_object_key(key)])
+
+    def test_restore_metadata_hit_sets_offline_eligible(self):
+        key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        writer = MemoryS3()
+        self.mod.publish_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+            cache_dir=self.root / ".pnpm-cache",
+        )
+        shutil.rmtree(self.root / ".pnpm-store")
+        shutil.rmtree(self.root / ".pnpm-cache")
+        result = self.mod.restore_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+        )
+        self.assertEqual(result.status, "hit")
+        self.assertEqual(result.metadata_status, "hit")
+        self.assertTrue(
+            (self.root / ".pnpm-cache" / "v12" / "metadata-full" / "https%3A+npm.ajrly.com" / "is-number.json").is_file()
+        )
+        report = self.mod.format_restore_report(result, key=key)
+        self.assertTrue(report["offline_eligible"])
+
+    def test_metadata_zip_traversal_rejected(self):
+        key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        writer = MemoryS3()
+        self.mod.publish_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+            cache_dir=self.root / ".pnpm-cache",
+        )
+        # Replace metadata archive with traversal payload.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name="../escape.txt")
+            data = b"evil"
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+        evil = buf.getvalue()
+        writer.objects[self.mod.metadata_archive_object_key(key)] = evil
+        manifest = json.loads(writer.objects[self.mod.manifest_object_key(key)])
+        manifest["metadata_archive_sha256"] = hashlib.sha256(evil).hexdigest()
+        manifest["metadata_compressed_bytes"] = len(evil)
+        manifest["metadata_expanded_bytes"] = 4
+        writer.objects[self.mod.manifest_object_key(key)] = (
+            json.dumps(manifest, sort_keys=True) + "\n"
+        ).encode()
+        shutil.rmtree(self.root / ".pnpm-store")
+        shutil.rmtree(self.root / ".pnpm-cache")
+        result = self.mod.restore_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+        )
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.metadata_status, "rejected")
+        self.assertFalse((self.root / ".pnpm-store").exists())
+
+    def test_metadata_missing_falls_back_cold_safe_store_hit(self):
+        key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        writer = MemoryS3()
+        self.mod.publish_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+            cache_dir=self.root / ".pnpm-cache",
+        )
+        del writer.objects[self.mod.metadata_archive_object_key(key)]
+        shutil.rmtree(self.root / ".pnpm-store")
+        shutil.rmtree(self.root / ".pnpm-cache")
+        result = self.mod.restore_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+        )
+        self.assertEqual(result.status, "hit")
+        self.assertEqual(result.metadata_status, "miss")
+        self.assertEqual(result.reason, "metadata_not_found")
+        report = self.mod.format_restore_report(result, key=key)
+        self.assertFalse(report.get("offline_eligible", False))
+
+    def test_mismatched_lock_rejects_caller_key(self):
+        key = self.mod.dependency_key(self.root, "full", self.toolchain)
+        writer = MemoryS3()
+        self.mod.publish_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+            cache_dir=self.root / ".pnpm-cache",
+        )
+        (self.root / "pnpm-lock.yaml").write_text("lock-changed\n")
+        result = self.mod.restore_store(
+            self.root, key, writer, scope="full", toolchain=self.toolchain,
+        )
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.reason, "caller_selected_key")
+
+    def test_resolve_pnpm_cache_dir_never_invents_default(self):
+        with self.assertRaisesRegex(ValueError, "pnpm_cache_dir_unresolved"):
+            self.mod.resolve_pnpm_cache_dir(
+                self.root,
+                run=lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "undefined\n", "stderr": ""})(),
+            )
 
 
 

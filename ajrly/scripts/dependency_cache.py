@@ -15,6 +15,7 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import stat
 import tarfile
 import tempfile
@@ -27,11 +28,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, Mapping, Optional, Protocol, Tuple
 
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2
 KEY_PREFIX = f"dep-v{CACHE_SCHEMA}-"
 MAX_COMPRESSED_BYTES = 2 * 1024 ** 3
+MAX_COMBINED_COMPRESSED_BYTES = 2 * MAX_COMPRESSED_BYTES
 MAX_AGE_SECONDS = 7 * 24 * 3600
 STORE_DIRNAME = ".pnpm-store"
+PROJECT_CACHE_DIRNAME = ".pnpm-cache"
+METADATA_ALLOWLIST_NAME = "metadata-full"
+METADATA_VERSION_RE = re.compile(r"^v\d+$")
 DEFAULT_PREFIX = "canonical/"
 SOURCE_MANIFEST = ".ajrly-source.json"
 PATCH_DIRNAME = "patches"
@@ -61,6 +66,8 @@ class RestoreResult:
     bytes: int = 0
     duration: float = 0.0
     reason: str = ""
+    metadata_status: str = ""  # hit | miss | rejected | skipped
+    metadata_bytes: int = 0
 
 
 def require_immutable_templates_ref(ref: str) -> str:
@@ -397,6 +404,73 @@ def archive_object_key(key: str, prefix: str = DEFAULT_PREFIX) -> str:
     return object_prefix(prefix) + key + ".tar.gz"
 
 
+def metadata_archive_object_key(key: str, prefix: str = DEFAULT_PREFIX) -> str:
+    if not KEY_RE.fullmatch(key):
+        raise ValueError("invalid dependency key")
+    return object_prefix(prefix) + key + ".metadata.tar.gz"
+
+
+def _metadata_root_allowed(relative: str) -> bool:
+    parts = Path(relative).parts
+    return (
+        len(parts) == 2
+        and bool(METADATA_VERSION_RE.fullmatch(parts[0]))
+        and parts[1] == METADATA_ALLOWLIST_NAME
+    )
+
+
+def _metadata_member_allowed(relative: str) -> bool:
+    parts = Path(relative).parts
+    if len(parts) < 2:
+        return False
+    return bool(METADATA_VERSION_RE.fullmatch(parts[0]) and parts[1] == METADATA_ALLOWLIST_NAME)
+
+
+def resolve_pnpm_cache_dir(
+    root: Path,
+    *,
+    environ: Optional[Mapping[str, str]] = None,
+    run=subprocess.run,
+) -> Path:
+    """Authoritative pnpm cache-dir from config + filesystem (never invent default)."""
+    root = Path(root).resolve()
+    env = dict(environ if environ is not None else os.environ)
+    result = run(
+        ["pnpm", "config", "get", "cache-dir"],
+        cwd=str(root),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    text_out = (result.stdout or "").strip()
+    if result.returncode != 0 or not text_out or text_out.lower() == "undefined":
+        raise ValueError("pnpm_cache_dir_unresolved")
+    path = Path(text_out)
+    if not path.is_absolute():
+        path = (root / path).resolve()
+    else:
+        path = path.resolve()
+    if not path.is_dir():
+        raise ValueError("pnpm_cache_dir_missing")
+    if not _is_within_directory(path, root):
+        raise ValueError("pnpm_cache_dir_outside_root")
+    return path
+
+
+def iter_metadata_full_roots(cache_dir: Path) -> list[Path]:
+    cache_dir = Path(cache_dir)
+    roots: list[Path] = []
+    if not cache_dir.is_dir():
+        return roots
+    for child in sorted(cache_dir.iterdir()):
+        if child.is_dir() and METADATA_VERSION_RE.fullmatch(child.name):
+            meta = child / METADATA_ALLOWLIST_NAME
+            if meta.is_dir():
+                roots.append(meta)
+    return roots
+
+
 def free_disk_bytes(path: Path) -> int:
     usage = shutil.disk_usage(path)
     return int(usage.free)
@@ -541,6 +615,12 @@ def format_restore_report(
             if key_name in pnpm_progress
         }
         report["pnpm_progress"] = progress
+    if result.metadata_status:
+        report["metadata_status"] = result.metadata_status
+        report["metadata_bytes"] = int(result.metadata_bytes)
+        report["offline_eligible"] = (
+            result.status == "hit" and result.metadata_status == "hit"
+        )
     return report
 
 
@@ -714,6 +794,8 @@ def _read_manifest(reader: S3Reader, key: str, prefix: str) -> dict:
     required = (
         "schema", "key", "toolchain", "scope", "created_at",
         "archive_sha256", "compressed_bytes", "expanded_bytes",
+        "metadata_archive_sha256", "metadata_compressed_bytes",
+        "metadata_expanded_bytes", "metadata_paths", "cache_dir_name",
     )
     missing = [field for field in required if field not in manifest]
     if missing:
@@ -730,9 +812,26 @@ def _read_manifest(reader: S3Reader, key: str, prefix: str) -> dict:
         created_at = float(manifest["created_at"])
         compressed = int(manifest["compressed_bytes"])
         expanded = int(manifest["expanded_bytes"])
+        meta_compressed = int(manifest["metadata_compressed_bytes"])
+        meta_expanded = int(manifest["metadata_expanded_bytes"])
     except (TypeError, ValueError) as error:
         raise ValueError("corrupt_manifest") from error
     if created_at <= 0 or compressed <= 0 or expanded < 0:
+        raise ValueError("corrupt_manifest")
+    if meta_compressed <= 0 or meta_expanded < 0:
+        raise ValueError("corrupt_manifest")
+    if compressed > MAX_COMPRESSED_BYTES or meta_compressed > MAX_COMPRESSED_BYTES:
+        raise ValueError("corrupt_manifest")
+    if compressed + meta_compressed > MAX_COMBINED_COMPRESSED_BYTES:
+        raise ValueError("corrupt_manifest")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("metadata_archive_sha256", ""))):
+        raise ValueError("corrupt_manifest")
+    paths = manifest.get("metadata_paths")
+    if not isinstance(paths, list) or not paths or not all(
+        isinstance(p, str) and _metadata_root_allowed(p) for p in paths
+    ):
+        raise ValueError("corrupt_manifest")
+    if str(manifest.get("cache_dir_name") or "") != PROJECT_CACHE_DIRNAME:
         raise ValueError("corrupt_manifest")
     return manifest
 
@@ -776,11 +875,18 @@ def restore_store(
 
         compressed = int(manifest.get("compressed_bytes", 0))
         expanded_declared = int(manifest.get("expanded_bytes", 0))
+        meta_compressed = int(manifest.get("metadata_compressed_bytes", 0))
+        meta_expanded_declared = int(manifest.get("metadata_expanded_bytes", 0))
         if compressed <= 0 or compressed > MAX_COMPRESSED_BYTES:
             return RestoreResult("rejected", 0, time.monotonic() - started, "compressed_too_large")
-        if expanded_declared < 0:
+        if meta_compressed <= 0 or meta_compressed > MAX_COMPRESSED_BYTES:
+            return RestoreResult("rejected", 0, time.monotonic() - started, "compressed_too_large")
+        if compressed + meta_compressed > MAX_COMBINED_COMPRESSED_BYTES:
+            return RestoreResult("rejected", 0, time.monotonic() - started, "combined_too_large")
+        if expanded_declared < 0 or meta_expanded_declared < 0:
             return RestoreResult("rejected", 0, time.monotonic() - started, "invalid_expanded_bytes")
-        if expanded_declared > free_disk_bytes(root):
+        needed = expanded_declared + meta_expanded_declared
+        if needed > free_disk_bytes(root):
             return RestoreResult("rejected", 0, time.monotonic() - started, "expanded_exceeds_free_disk")
         if str(manifest.get("scope", scope)) != scope:
             return RestoreResult("rejected", 0, time.monotonic() - started, "scope_mismatch")
@@ -789,8 +895,11 @@ def restore_store(
         parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix="restore-", dir=str(parent)))
         archive_path = staging / "store.tar.gz"
+        meta_archive_path = staging / "metadata.tar.gz"
         extract_dir = staging / "extract"
+        meta_extract_dir = staging / "meta-extract"
         extract_dir.mkdir()
+        meta_extract_dir.mkdir()
 
         try:
             written = reader.fetch(archive_object_key(key, prefix), archive_path)
@@ -806,6 +915,68 @@ def restore_store(
             _cleanup(staging)
             return RestoreResult("rejected", written, time.monotonic() - started, "checksum_mismatch")
 
+        metadata_status = "miss"
+        meta_written = 0
+        try:
+            meta_written = reader.fetch(
+                metadata_archive_object_key(key, prefix), meta_archive_path
+            )
+        except FileNotFoundError:
+            # Store-only: cold-safe fallback (prefer-offline / online), never hard-offline.
+            metadata_status = "miss"
+            meta_written = 0
+        else:
+            if (
+                meta_written != meta_compressed
+                or meta_archive_path.stat().st_size != meta_compressed
+            ):
+                _cleanup(staging)
+                return RestoreResult(
+                    "rejected",
+                    written,
+                    time.monotonic() - started,
+                    "metadata_compressed_size_mismatch",
+                    metadata_status="rejected",
+                    metadata_bytes=meta_written,
+                )
+            meta_digest = _sha256_file(meta_archive_path)
+            if meta_digest != str(manifest.get("metadata_archive_sha256", "")):
+                _cleanup(staging)
+                return RestoreResult(
+                    "rejected",
+                    written,
+                    time.monotonic() - started,
+                    "metadata_checksum_mismatch",
+                    metadata_status="rejected",
+                    metadata_bytes=meta_written,
+                )
+            try:
+                _extract_verified(
+                    meta_archive_path,
+                    meta_extract_dir,
+                    expected_expanded=meta_expanded_declared,
+                )
+                for path in meta_extract_dir.rglob("*"):
+                    if path.is_dir():
+                        continue
+                    relative = path.relative_to(meta_extract_dir).as_posix()
+                    if not _metadata_member_allowed(relative):
+                        raise ValueError("unsafe_archive_member")
+            except ValueError as error:
+                _cleanup(staging)
+                reason = str(error) if str(error) in {
+                    "unsafe_archive_member", "expanded_mismatch"
+                } else "unsafe_archive_member"
+                return RestoreResult(
+                    "rejected",
+                    written,
+                    time.monotonic() - started,
+                    "metadata_" + reason if not reason.startswith("metadata_") else reason,
+                    metadata_status="rejected",
+                    metadata_bytes=meta_written,
+                )
+            metadata_status = "hit"
+
         try:
             _extract_verified(archive_path, extract_dir, expected_expanded=expanded_declared)
         except ValueError as error:
@@ -813,29 +984,63 @@ def restore_store(
             reason = str(error) if str(error) in {
                 "unsafe_archive_member", "expanded_mismatch"
             } else "unsafe_archive_member"
-            return RestoreResult("rejected", written, time.monotonic() - started, reason)
+            return RestoreResult(
+                "rejected",
+                written,
+                time.monotonic() - started,
+                reason,
+                metadata_status=metadata_status if metadata_status == "miss" else "rejected",
+                metadata_bytes=meta_written,
+            )
 
         store = root / STORE_DIRNAME
         final_staging = root / f".{STORE_DIRNAME}.promoting"
         _cleanup(final_staging)
-        # Refuse to promote if staging escaped the extract root (symlink tricks).
         extract_resolved = extract_dir.resolve(strict=False)
         for path in extract_dir.rglob("*"):
             if not _is_within_directory(path, extract_resolved):
                 _cleanup(staging)
                 return RestoreResult(
                     "rejected", written, time.monotonic() - started, "unsafe_archive_member",
+                    metadata_status="rejected", metadata_bytes=meta_written,
                 )
         shutil.move(str(extract_dir), str(final_staging))
         if store.exists() or store.is_symlink():
             if store.is_symlink() or store.is_file():
                 store.unlink()
             else:
-                # Never follow a pre-existing store symlink into attacker-controlled paths.
                 shutil.rmtree(store)
         os.replace(final_staging, store)
+
+        if metadata_status == "hit":
+            cache_dir = root / PROJECT_CACHE_DIRNAME
+            cache_promoting = root / f".{PROJECT_CACHE_DIRNAME}.promoting"
+            _cleanup(cache_promoting)
+            meta_resolved = meta_extract_dir.resolve(strict=False)
+            for path in meta_extract_dir.rglob("*"):
+                if not _is_within_directory(path, meta_resolved):
+                    _cleanup(staging)
+                    return RestoreResult(
+                        "rejected", written, time.monotonic() - started, "unsafe_archive_member",
+                        metadata_status="rejected", metadata_bytes=meta_written,
+                    )
+            shutil.move(str(meta_extract_dir), str(cache_promoting))
+            if cache_dir.exists() or cache_dir.is_symlink():
+                if cache_dir.is_symlink() or cache_dir.is_file():
+                    cache_dir.unlink()
+                else:
+                    shutil.rmtree(cache_dir)
+            os.replace(cache_promoting, cache_dir)
+
         _cleanup(staging)
-        return RestoreResult("hit", written, time.monotonic() - started, "")
+        return RestoreResult(
+            "hit",
+            written,
+            time.monotonic() - started,
+            "" if metadata_status == "hit" else "metadata_not_found",
+            metadata_status=metadata_status,
+            metadata_bytes=meta_written,
+        )
     except ValueError as error:
         if staging is not None:
             _cleanup(staging)
@@ -906,6 +1111,8 @@ def restore_for_job_scope(
             fallback.bytes,
             fallback.duration,
             "reused_full_archive",
+            metadata_status=fallback.metadata_status,
+            metadata_bytes=fallback.metadata_bytes,
         )
         return JobScopeRestore(
             result=reused,
@@ -964,6 +1171,41 @@ def _archive_store(store: Path, archive_path: Path) -> Tuple[int, int]:
     return compressed, expanded
 
 
+def _archive_metadata(cache_dir: Path, archive_path: Path) -> Tuple[int, int, list]:
+    roots = iter_metadata_full_roots(cache_dir)
+    if not roots:
+        raise ValueError("pnpm metadata-full is missing")
+    expanded = 0
+    members: list[Path] = []
+    for meta_root in roots:
+        for path in meta_root.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("metadata symlinks rejected")
+            if path.is_file():
+                relative = path.relative_to(cache_dir).as_posix()
+                if not _metadata_member_allowed(relative):
+                    raise ValueError("metadata path not allowlisted")
+                members.append(path)
+    if not members:
+        raise ValueError("pnpm metadata-full is empty")
+    with tarfile.open(archive_path, mode="w:gz", compresslevel=6) as tar:
+        for path in sorted(members):
+            relative = path.relative_to(cache_dir).as_posix()
+            _safe_member_path(relative)
+            size = path.stat().st_size
+            expanded += size
+            info = tarfile.TarInfo(name=relative)
+            info.size = size
+            info.mtime = int(path.stat().st_mtime)
+            info.mode = stat.S_IMODE(path.stat().st_mode)
+            with path.open("rb") as handle:
+                tar.addfile(info, handle)
+    compressed = archive_path.stat().st_size
+    if compressed > MAX_COMPRESSED_BYTES:
+        raise ValueError(f"compressed archive exceeds {MAX_COMPRESSED_BYTES} bytes")
+    return compressed, expanded, [r.relative_to(cache_dir).as_posix() for r in roots]
+
+
 def publish_store(
     root: Path,
     key: str,
@@ -972,6 +1214,9 @@ def publish_store(
     scope: str = "full",
     toolchain: Optional[Mapping[str, str]] = None,
     prefix: str = DEFAULT_PREFIX,
+    cache_dir: Optional[Path] = None,
+    environ: Optional[Mapping[str, str]] = None,
+    run=subprocess.run,
 ) -> dict:
     """Pure producer API. Authorization is the caller's responsibility (platform main)."""
     root = Path(root)
@@ -983,10 +1228,23 @@ def publish_store(
     store = root / STORE_DIRNAME
     if not store.is_dir():
         raise ValueError("pnpm store is missing")
+    if cache_dir is None:
+        resolved = resolve_pnpm_cache_dir(root, environ=environ, run=run)
+    else:
+        resolved = Path(cache_dir).resolve()
+        if not resolved.is_dir():
+            raise ValueError("pnpm_cache_dir_missing")
+        if not _is_within_directory(resolved, root.resolve()):
+            raise ValueError("pnpm_cache_dir_outside_root")
     with tempfile.TemporaryDirectory(prefix="dependency-publish-") as tmp:
         archive_path = Path(tmp) / "store.tar.gz"
+        meta_path = Path(tmp) / "metadata.tar.gz"
         compressed, expanded = _archive_store(store, archive_path)
+        meta_compressed, meta_expanded, meta_paths = _archive_metadata(resolved, meta_path)
+        if compressed + meta_compressed > MAX_COMBINED_COMPRESSED_BYTES:
+            raise ValueError("combined compressed archives exceed budget")
         digest = _sha256_file(archive_path)
+        meta_digest = _sha256_file(meta_path)
         manifest = {
             "schema": CACHE_SCHEMA,
             "key": key,
@@ -996,6 +1254,11 @@ def publish_store(
             "archive_sha256": digest,
             "compressed_bytes": compressed,
             "expanded_bytes": expanded,
+            "metadata_archive_sha256": meta_digest,
+            "metadata_compressed_bytes": meta_compressed,
+            "metadata_expanded_bytes": meta_expanded,
+            "metadata_paths": meta_paths,
+            "cache_dir_name": PROJECT_CACHE_DIRNAME,
         }
         writer.put(
             manifest_object_key(key, prefix),
@@ -1005,6 +1268,11 @@ def publish_store(
         writer.put(
             archive_object_key(key, prefix),
             archive_path.read_bytes(),
+            content_type="application/gzip",
+        )
+        writer.put(
+            metadata_archive_object_key(key, prefix),
+            meta_path.read_bytes(),
             content_type="application/gzip",
         )
         return manifest

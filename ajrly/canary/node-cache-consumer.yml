@@ -137,6 +137,7 @@ variables:
         python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
         export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
         pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+        pnpm config set cache-dir "$CI_PROJECT_DIR/.pnpm-cache"
         # Capture restore metrics; never claim a Runner cache hit as a store hit.
         # Scope from job definition only (--scope-from-job); never hardcode --scope full
         # for LAST_KEY after a scoped restore (fabricates full-scope identity).

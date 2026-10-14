@@ -35,12 +35,14 @@
     - pnpm --version && node --version
     - export CI_JOB_TMPDIR="$CI_PROJECT_DIR/.ci-tmp/$CI_JOB_ID"; mkdir -p "$CI_JOB_TMPDIR"
     - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+    - pnpm config set cache-dir "$CI_PROJECT_DIR/.pnpm-cache"
     - |
       # Exact-source verification completed above (GIT_STRATEGY=none). Key/restore only
       # after checkout. No GitLab archive key-files. Ordinary jobs never upload canonical archives.
       # Scope is job-definition authoritative (PROJECT_PATH/PNPM_INSTALL_SCOPE via --scope-from-job),
       # not a caller-writable AJRLY_DEPENDENCY_CACHE_SCOPE widen to full.
-      # Hit → prefer-offline (use restored store). Valid miss → cold online install.
+      # Schema-2 hit with metadata-full → env offline (never `pnpm config set offline`).
+      # Store-only hit → prefer-offline cold-safe. Miss → online cold install.
       # Rejected/unsafe archive → restore exits non-zero (fail closed).
       mkdir -p "$CI_PROJECT_DIR/.ci-tmp"
       RESTORE_JSON=$(python3 /tmp/ajrly-dependency-cache.py restore --root "$CI_PROJECT_DIR" \
@@ -49,13 +51,12 @@
       echo "$RESTORE_JSON" | tee "$CI_PROJECT_DIR/.ci-tmp/dependency-restore.json"
       export AJRLY_DEPENDENCY_CACHE_LAST_STATUS=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json'))['status'])")
       export AJRLY_DEPENDENCY_CACHE_LAST_REASON=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('reason',''))")
-      if [ "$AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit" ]; then
-        # Store hit → prefer-offline (tarballs from restored store). Do NOT set
-        # PNPM_CONFIG_OFFLINE: the 60b2 archive does not include pnpm metadata-full,
-        # so hard offline fails with ERR_PNPM_NO_OFFLINE_META (pipeline 501).
-        # Missing meta resolves via private AJRLY_NPM_REGISTRY (internal LAN route).
-        # Miss stays online for authentic cold install. Never write offline via
-        # `pnpm config set` (pnpm 12 rejects that key in global config.yaml).
+      export AJRLY_DEPENDENCY_CACHE_METADATA_STATUS=$(python3 -c "import json,os;print(json.load(open(os.environ['CI_PROJECT_DIR']+'/.ci-tmp/dependency-restore.json')).get('metadata_status',''))")
+      if [ "$AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit" ] && [ "$AJRLY_DEPENDENCY_CACHE_METADATA_STATUS" = "hit" ]; then
+        export PNPM_CONFIG_PREFER_OFFLINE=true
+        export PNPM_CONFIG_OFFLINE=true
+        pnpm config set prefer-offline true
+      elif [ "$AJRLY_DEPENDENCY_CACHE_LAST_STATUS" = "hit" ]; then
         export PNPM_CONFIG_PREFER_OFFLINE=true
         unset PNPM_CONFIG_OFFLINE || true
         pnpm config set prefer-offline true

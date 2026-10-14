@@ -135,6 +135,7 @@ variables:
         python3 /tmp/ajrly-dependency-cache.py configure-registry --root "$CI_PROJECT_DIR"
         export PNPM_CONFIG_REGISTRY="$AJRLY_NPM_REGISTRY"
         pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+        pnpm config set cache-dir "$CI_PROJECT_DIR/.pnpm-cache"
         if [ "${AJRLY_DEPENDENCY_CACHE_SKIP_RESTORE:-false}" = "true" ]; then
           # Cold phase: deliberate skip so we do not mis-label a store hit as cold miss.
           echo '{"status":"miss","reason":"cold_skip_restore","bytes":0,"restore_duration_s":0,"job_scope":"apps/backend/api","archive_scope":"","job_key":"","archive_key":""}' \
